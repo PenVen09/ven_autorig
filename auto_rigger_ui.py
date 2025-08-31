@@ -25,23 +25,25 @@ class VenAutoRig(QtWidgets.QMainWindow):
                     "position": [(0, 0, 0)],
                     "suffix": ["root"],
                     "attrs": {
-                        "rigType": {"widget": "lineedit", "value": "guide"},
+                        "rigType": {"widget": "string", "value": "Base"},
+                        "component_index":{"widget":"float", "value": "0"},
                         "comp_side": {
-                            "widget": "dropdown",
+                            "widget": "enum",
                             "options": ["Left", "Right", "Center"],
                             "value": "Center"
                         },
-                        "isDeformer": {"widget": "checkbox", "value": True}
+                        "isBindJoint": {"widget": "bool", "value": True}
                     }
                 },
-                "FKChain": {
-                    "position": [(0, 0, 0), (0, 0, 5), (0, 0, 10), (0, 0, 15)],
+                "FKIKChain": {
+                    "position": [(0, 0, 0), (5, 0, 0), (5, 0, 0), (5, 0, 0)],
                     "suffix": ["loc"],
                     "attrs": {
-                        "rigType": {"widget": "lineedit", "value": "guide"},
-                        "numJoints": {"widget": "spinbox", "value": 3},
+                        "rigType": {"widget": "string", "value": "FKIKChain"},
+                        "component_index":{"widget":"float", "value": "0"},
+                        "numJoints": {"widget": "float", "value": 3},
                         "comp_side": {
-                            "widget": "dropdown",
+                            "widget": "enum",
                             "options": ["Left", "Right", "Center"],
                             "value": "Center"
                         },
@@ -49,26 +51,38 @@ class VenAutoRig(QtWidgets.QMainWindow):
                 }
             },
             "Limbs": {
+                "Shoulder" :{
+                    "position": [(0, 0, 0), (5, 0, 0)],
+                    "suffix": ["root", "tip"],
+                    "attrs": {
+                        "rigType": {"widget": "string", "value": "arm"},
+                        "comp_side": {
+                            "widget": "enum",
+                            "options": ["Left", "Right"],
+                            "value": "Left"
+                    },
+                },
+            },
                 "Arm": {
-                    "position": [(1, 5, 0), (5, 0, 5), (8, 0, 5)],
+                    "position": [(0, 0, 0), (5, 0, 0), (5, 0, 0)],
                     "suffix": ["root", "elbow", "wrist"],
                     "attrs": {
-                        "rigType": {"widget": "lineedit", "value": "arm"},
+                        "rigType": {"widget": "string", "value": "arm"},
                         "comp_side": {
-                            "widget": "dropdown",
-                            "options": ["Left", "Right"],
+                            "widget": "enum",
+                            "options": ["Left", "Right", "Center"],
                             "value": "Left"
                         }
                     }
                 },
                 "Leg": {
-                    "position": [(1, 10, 0), (1, 5, 0), (1, 0, 0)],
+                    "position": [(0, 0, 0), (5, 0, 0), (5, 0, 0)],
                     "suffix": ["root", "knee", "foot"],
                     "attrs": {
-                        "rigType": {"widget": "lineedit", "value": "leg"},
+                        "rigType": {"widget": "string", "value": "leg"},
                         "comp_side": {
-                            "widget": "dropdown",
-                            "options": ["Left", "Right"],
+                            "widget": "enum",
+                            "options": ["Left", "Right", "Center"],
                             "value": "Right"
                         }
                     }
@@ -150,28 +164,33 @@ class VenAutoRig(QtWidgets.QMainWindow):
         self.guide_settings_layout = QtWidgets.QVBoxLayout(guide_settings_container)
         self.guide_settings_layout.setAlignment(QtCore.Qt.AlignTop)
 
-        """
-        #group_layout.addRow("Proxy Version", QtWidgets.QLabel("[1.4.0]"))
-        group_layout.addRow("Name", QtWidgets.QLineEdit("idk lol"))
-        group_layout.addRow("Control Scale", QtWidgets.QDoubleSpinBox())
-         """
         guide_settings_button = QtWidgets.QPushButton("Generate Settings")
 
         self.guide_layout.addWidget(group)
         self.guide_layout.addWidget(guide_settings_button)
         guide_settings_button.clicked.connect(self._populate_module)
-        #self.guide_layout.addWidget(guide_settings_button)
 
         rig_content_layout.addLayout(component_layout,1)
         rig_content_layout.addLayout(self.guide_layout,3)
 
         # --------------------------------------------------
-        #------debug box-----
+        # ------debug box-----
         self.debug_box = QtWidgets.QPlainTextEdit()
         self.debug_box.setReadOnly(True)
         self.debug_box.setFixedHeight(100)
         self.debug_box.appendPlainText(__doc__)
         rig_main_layout.addWidget(self.debug_box)
+
+        # --------------------------------------------------
+        #------ build button-----
+        build_layout = QtWidgets.QHBoxLayout()
+        #build_guide = QtWidgets.QPushButton("Update guide")
+        build_joint = QtWidgets.QPushButton("Spawn Joints")
+        build_controller = QtWidgets.QPushButton("Spawn Controller")
+
+        build_layout.addWidget(build_joint)
+        build_layout.addWidget(build_controller)
+        rig_main_layout.addLayout(build_layout)
 
         self.populate_treeview(self.component_tree_list)
         self.component_tree_list.expandAll()
@@ -188,14 +207,23 @@ class VenAutoRig(QtWidgets.QMainWindow):
                 QtWidgets.QTreeWidgetItem(tree_item, [child])
 
     def spawn_guides(self):
-        selection = self.component_tree_list.currentItem()
-        if selection:
-            selected = selection.text(0)
-            side = self.component_lists[selection.parent().text(0)][selected]["attrs"]["comp_side"]["value"]
-            suffix = self.component_lists[selection.parent().text(0)][selected]["suffix"]
+        ATTR_BUILDERS = {
+                        "string": self.add_string,
+                        "bool": self.add_bool,
+                        "enum": self.add_enum,
+                        "float": self.add_float,
+                        }
+
+
+        tree_selection = self.component_tree_list.currentItem()
+        selection = cmds.ls(selection=True)
+        if tree_selection:
+            selected = tree_selection.text(0)
+            side = self.component_lists[tree_selection.parent().text(0)][selected]["attrs"]["comp_side"]["value"]
+            suffix = self.component_lists[tree_selection.parent().text(0)][selected]["suffix"]
             base = selected
             side_index = 0
-            position = self.component_lists[selection.parent().text(0)][selected]["position"]
+            position = self.component_lists[tree_selection.parent().text(0)][selected]["position"]
 
             ctx = naming_config.NamingContext(base, side, "guide", suffix[0])
             full_name = naming_config.get_unique_name(ctx)
@@ -205,33 +233,86 @@ class VenAutoRig(QtWidgets.QMainWindow):
                 ctx.suffix = "crv"
                 full_name = naming_config.get_unique_name(ctx)
                 ep_curve = cmds.curve(d=1, p=position, name=full_name)
+                ep_shape = self.rename_shape(ep_curve)
                 cmds.setAttr(f"{ep_curve}.template", 1)
                 cmds.setAttr(f"{ep_curve}.lineWidth", 1.5)
+
+
             else:
                 ep_curve = None
 
             for ctx.index, (pos, suffix) in enumerate(zip_longest(position, suffix, fillvalue=suffix[-1])):
+                """ Might need to fix how the enumerate/index work for controlPoints(if index is changeable by user)"""
                 ctx.suffix = suffix
                 full_name = naming_config.get_unique_name(ctx)
-                if ctx.index == 0:
-                    parent_node = self.create_guide_controller(False, full_name, pos)
-                    if ep_curve:
-                        cmds.parent(ep_curve, parent_node)
-                else:
-                    child_node = self.create_guide_controller(True, full_name, pos)
-                    cmds.parent(child_node, parent_node)
-                    parent_node = child_node
-                pass
 
-    def create_guide_controller(self, isSphere=True, name=None, pos=(0,0,0), r= 0.5):
+                if ctx.index == 0:
+                    parent_node = self.create_guide_controller(False, full_name, None, pos)
+                    cmds.addAttr(parent_node, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=True)
+
+
+                    attributes = self.component_lists[tree_selection.parent().text(0)][selected]["attrs"]
+                    for atb, item in attributes.items():
+                        type = item["widget"]
+                        build_fn = ATTR_BUILDERS[type]
+                        build_fn(parent_node, atb, item, ctx.subindex)
+                    self.rename_shape(parent_node)
+
+                    if not selection:
+                        guide_group = cmds.group(parent_node, world=True, n="guide")#Later need to add variable to name guide
+                        cmds.addAttr(guide_group, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=True)
+                    elif len(selection) > 1:
+                        cmds.warning("More than 1 selection detected")
+                    else:
+                        if cmds.attributeQuery("isVenGuide", node=selection[0], exists=True):
+                            cmds.parent(parent_node, selection[0])
+                            cmds.matchTransform(parent_node, selection[0])
+                        else:
+                            cmds.warning("Parent is not autorig guide")
+
+                    if ep_curve:
+                        ep_offset = cmds.group(ep_curve, parent=parent_node, n=f"{ep_curve}_offset",r=True)
+                        cmds.connectAttr(f"{parent_node}.worldInverseMatrix", f"{ep_offset}.offsetParentMatrix")
+
+                        #Probably will make this below as method soon
+                        world_space = cmds.createNode("decomposeMatrix", name=f"{parent_node}" + "_ws")
+                        cmds.connectAttr(f"{parent_node}.worldMatrix[0]", f"{world_space}.inputMatrix", f=True)
+                        cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{ctx.index}]")
+                else:
+                    child_node = self.create_guide_controller(True, full_name, parent_node, pos)
+                    cmds.addAttr(child_node, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=True)
+
+                    #Probably will make this below as method soon
+                    world_space = cmds.createNode("decomposeMatrix", name=f"{parent_node}" + "_ws")
+                    cmds.connectAttr(f"{child_node}.worldMatrix[0]", f"{world_space}.inputMatrix", f=True)
+                    cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{ctx.index}]")
+
+                    parent_node = child_node
+
+    def spawn_joint(self):
+        '''"attrs": {
+                        "rigType": {"widget": "lineedit", "value": "Base"},
+                        "comp_side": {
+                            "widget": "dropdown",
+                            "options": ["Left", "Right", "Center"],
+                            "value": "Center"
+                        },
+                        "isBindJoint": {"widget": "checkbox", "value": True}}'''
+        guides = cmds.ls("*_root", type="transform")
+        if guides:
+            for guide in guides:
+                pass
+        pass
+
+    def create_guide_controller(self, isSphere=True, name=None, parent=None, pos=(0,0,0), r=0.5):
         if not isSphere:
             node = cmds.curve(
                 d=1,
-                p = [(-r, -r, -r), (-r, -r, r), (-r, r, r), (-r, r, -r), (-r, -r, -r),
+                p=[(-r, -r, -r), (-r, -r, r), (-r, r, r), (-r, r, -r), (-r, -r, -r),
                     (r, -r, -r), (r, -r, r), (-r, -r, r), (r, -r, r),
                     (r, r, r), (-r, r, r), (r, r, r),
                     (r, r, -r), (-r, r, -r), (r, r, -r), (r, -r, -r),
-                ],
+                   ],
                 k=list(range(16)),
                 name=name
             )
@@ -250,12 +331,48 @@ class VenAutoRig(QtWidgets.QMainWindow):
             )
             cmds.setAttr(node + ".overrideEnabled", 1)
             cmds.setAttr(node + ".overrideColor", 17)
-
+        if parent:
+            cmds.parent(node, parent)
         cmds.xform(node, t=pos)
+        self.rename_shape(node)
+
         return node
 
+    def rename_shape(self, node):
+        """Rename the first shape under a transform to match the transform name"""
+        shapes = cmds.listRelatives(node, shapes=True, fullPath=False)
+        if shapes:
+            new_name = node + "Shape"
+            return cmds.rename(shapes[0], new_name)
+        return None
+
+    def add_string(self, obj, name, type, *args):
+        cmds.addAttr(obj, ln=name, dt="string")
+        cmds.setAttr(f"{obj}.{name}", type.get("value", ""), type="string")
+
+    def add_bool(self,obj, name, type, *args):
+        cmds.addAttr(obj, ln=name, at="bool", dv=int(type.get("value", False)))
+        cmds.setAttr(f"{obj}.{name}", e=True, k=True)
+
+    def add_enum(self,obj, name, type, *args):
+        opts = ":".join(type.get("options", []))
+        cmds.addAttr(obj, ln=name, at="enum", en=opts)
+        if "value" in type:
+            idx = type["options"].index(type["value"])
+            cmds.setAttr(f"{obj}.{name}", idx)
+
+    def add_float(self, obj, name, type, index, *args):
+        """ Maybe will optimize the override stuff later"""
+        OVERRIDES = {
+                    "component_index": index,
+                    }
+        value = float(type.get("value", 0.0))
+        value = OVERRIDES.get(name, value)
+        cmds.addAttr(obj, ln=name, at="float", dv=value)
+        cmds.setAttr(f"{obj}.{name}", e=True, k=True)
+
     def _separator(self):
-        """ Spawn separator based on this style"""
+        """ Spawn separator based on this style """
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.HLine)
         line.setFrameShadow(QtWidgets.QFrame.Sunken)
@@ -263,7 +380,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
         return line
 
     def _collapsible_button(self, label_text, isVisible=True) -> Tuple[QWidget, QPushButton, QVBoxLayout]:
-        """ Spawn a collapsible button widget, return some widget that can be parented under other layout"""
+        """ Spawn a collapsible button widget, return some widget that can be parented under other layout """
         section_widget = QtWidgets.QWidget()
         section_layout = QtWidgets.QVBoxLayout(section_widget)
         section_layout.setContentsMargins(0, 0, 0, 0)
@@ -311,19 +428,25 @@ class VenAutoRig(QtWidgets.QMainWindow):
         return section_widget, toggle_button, content_layout
 
     def _collapsible_on_pressed(self, buttons, collapse_widget) -> None:
-        """ Complement _collapsible_button"""
+        """ Complement _collapsible_button """
         checked = buttons.isChecked()
         buttons.setArrowType(QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow)
         collapse_widget.setVisible(not checked)
 
     def _populate_module(self):
+        self._clear_layout(self.guide_settings_layout)
         widget, button, layout = self._collapsible_button("Test")
         self.guide_settings_layout.addWidget(widget)
 
-
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
 def get_maya_window():
-    """Return Maya main window as QMainWindow."""
+    """ Return Maya main window as QMainWindow."""
     main_window_ptr = omui.MQtUtil.mainWindow()
     return wrapInstance(int(main_window_ptr), QtWidgets.QMainWindow)
 
