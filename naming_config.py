@@ -6,7 +6,7 @@ NAMING_PREFS = {
     "separator": "_",
     "prefixes": {
         "guide": "g",
-        "bind": "bn",
+        "joint": "jnt",
         "final": "rig",
         "temp": "tmp"
     },
@@ -21,8 +21,6 @@ class NamingContext:
     suffix: str
     index: int = 0
     subindex: int = 0
-
-
 
 def build_name(ctx: NamingContext) -> str:
     """Reorder naming based on settings"""
@@ -48,4 +46,21 @@ def get_unique_name(ctx: NamingContext, start_index: int = 0) -> str:
     while cmds.objExists(build_name(ctx)):
         ctx.subindex += 1
     return build_name(ctx)
+
+
+def parse_and_build(name, order=None, new_order=None, **overrides):
+    """
+    Parse a name into parts, then rebuild into a new string.
+    """
+    if order is None:
+        order = NAMING_PREFS["order"]
+    if new_order is None:
+        new_order = order
+
+    parts = name.split(NAMING_PREFS["separator"])
+    ctx = {key: val for key, val in zip(order, parts)}
+    for key, value in overrides.items():
+        ctx[key] = NAMING_PREFS["prefixes"].get(value, value)
+
+    return NAMING_PREFS["separator"].join(ctx[key] for key in new_order if key in ctx)
 
