@@ -2,12 +2,15 @@
 AutoRig Tool
 why am i here
 to do:
+- better UI D:
 - guide have rotation value and better placement
+- rotation order
 - arrow pins
 - Convert selected joints to guides
 - orient tools(aim, etc)
 - Connect to controller script?
 - animation or game rig checkbox
+- unreal/unity based naming convention changer
 """
 from typing import Tuple
 from itertools import zip_longest
@@ -22,19 +25,19 @@ from . import naming_config
 
 comments = "This is version 1.0"
 
-class VenAutoRig(QtWidgets.QMainWindow):
+class VenAutoRig(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(VenAutoRig, self).__init__(parent)
-        self.resize(500, 550)
+        self.setMinimumWidth(500)
         self.component_lists = {
             "General": {
                 "Joints": {
                     "position": [(0, 0, 0)],
-                    "rotation": [(0,0,0)],
+                    "rotation": [(0, 0, 0)],
                     "suffix": ["root"],
                     "attrs": {
                         "rigType": {"widget": "string", "value": "Base"},
-                        "component_index":{"widget":"float", "value": "0"},
+                        "component_index": {"widget": "float", "value": "0"},
                         "comp_side": {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
@@ -49,7 +52,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
                     "suffix": ["loc"],
                     "attrs": {
                         "rigType": {"widget": "string", "value": "FKIKChain"},
-                        "component_index":{"widget":"float", "value": "0"},
+                        "component_index": {"widget": "float", "value": "0"},
                         "numJoints": {"widget": "float", "value": 3},
                         "comp_side": {
                             "widget": "enum",
@@ -60,7 +63,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
                 }
             },
             "Limbs": {
-                "Shoulder" :{
+                "Shoulder": {
                     "position": [(4, 143, 3), (20, 0, 0)],
                     "rotation": [(0, 12, 0), (0, 0, 0)],
                     "suffix": ["shoulder", "tip"],
@@ -89,15 +92,20 @@ class VenAutoRig(QtWidgets.QMainWindow):
                 "Leg": {
                     "position": [(22.495, 75.582, 0), (0, 0, 14.255), (64, 0, -10.644)],
                     "rotation": [(0, 0, -90), (0, 0, 0), (0, 0, 0)],
-                    "suffix": ["root", "knee", "foot"],
+                    "suffix": ["hips", "knee", "ankle"],
                     "attrs": {
                         "rigType": {"widget": "string", "value": "leg"},
                         "comp_side": {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
-                            "value": "Right"
+                            "value": "Left"
                         }
                     }
+                },
+                "Foot": {
+
+
+
                 }
             }
         }
@@ -107,28 +115,89 @@ class VenAutoRig(QtWidgets.QMainWindow):
                           [0.8006006163359417, 0.0, 1.93713276530616e-08], [0.8006006163359419, 0.0, 2.4018018683791524],
                           [1.6012012326718836, 0.0, 2.4018018683791524], [4.902264934679079e-16, 0.0, 4.003003101051036]]
         }
+        self.section_widgets = {}
         self.initialize_ui()
 
     def initialize_ui(self):
-        central_widget = QtWidgets.QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QtWidgets.QVBoxLayout(central_widget)
-        self.main_tabs = QtWidgets.QTabWidget()
-        layout.addWidget(self.main_tabs)
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(0,0,0,0)
+        main_layout.setSpacing(0)
 
-        # --------------------------------------------------
-        # Rig Tab
+
+        self.toolbar = QtWidgets.QToolBar()
+        self.toolbar.setIconSize(QtCore.QSize(24, 24))
+        main_layout.addWidget(self.toolbar)
+
+        self.content_area = QtWidgets.QVBoxLayout()
+        self.content_area.setContentsMargins(5,5,5,5)
+        main_layout.addLayout(self.content_area)
+        self.action_main = self.add_toolbar_button("Main", self.build_main_box, default_open=True, icon_name="joint.svg")
+        self.action_debug = self.add_toolbar_button("Debug", self.build_debug_box, default_open=True, icon_name="openScript.png")
+        self.add_toolbar_button("Three", self.build_section_three)
+
+    def add_toolbar_button(self, name, builder_func, default_open=False, icon_name=None):
+        if icon_name:
+            icon = QtGui.QIcon(f":/{icon_name}")
+        else:
+            icon = QtGui.QIcon()
+
+        action = self.toolbar.addAction(icon, name)
+        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        self.toolbar.setStyleSheet("""
+        QToolButton {
+            background: none;
+            border: none;
+        }
+        QToolButton:pressed {
+            background: none;
+        }
+        QToolButton:focus {
+            outline: none;
+        }
+        """)
+
+        action.setCheckable(True)
+        action.toggled.connect(
+            lambda checked, f=builder_func, a=action: self.toggle_section(checked, f, a)
+        )
+
+        if default_open:
+            action.setChecked(True)
+
+        return action
+
+    def toggle_section(self, checked, builder_func, action):
+        if checked:
+            widget = builder_func()
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+            self.section_widgets[action] = widget
+            self.content_area.addWidget(widget, alignment=QtCore.Qt.AlignTop)
+        else:
+            widget = self.section_widgets.pop(action, None)
+            if widget:
+                widget.setParent(None)
+
+        self.adjustSize()
+
+    def build_main_box(self):
+        w = QtWidgets.QGroupBox("Build")
+        w.setMinimumSize(500,450)
+        l = QtWidgets.QVBoxLayout(w)
+
         rig_tab = QtWidgets.QWidget()
-        rig_main_layout = QtWidgets.QVBoxLayout(rig_tab)
+        content_area  = QtWidgets.QVBoxLayout(rig_tab)
+
         rig_content_layout = QtWidgets.QHBoxLayout()
-        rig_main_layout.addLayout(rig_content_layout)
+        content_area.addLayout(rig_content_layout)
+        l.addWidget(rig_tab)
 
         # --------------------------------------------------
         # Left side - (components)
         component_layout = QtWidgets.QVBoxLayout()
 
         component_list_tabs = QtWidgets.QTabWidget()
-        component_layout.addWidget(component_list_tabs)
+
 
         component_tab_widget = QtWidgets.QWidget()
         tab_layout = QtWidgets.QVBoxLayout(component_tab_widget)
@@ -143,6 +212,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
         tab_layout.addWidget(self.component_tree_list, 1)
 
         # --------------------------------------------------
+        '''
         side_layout = QtWidgets.QHBoxLayout()
         self.sideCheck = QtWidgets.QCheckBox()
         self.sideCheck.setChecked(False)
@@ -157,7 +227,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
         self.sideRadioGrp.buttons()[1].setChecked(True)
         self.sideCheck.toggled.connect(lambda state: self._toggleRadio(self.sideRadioGrp, state))
         self._toggleRadio(self.sideRadioGrp, False)
-
+        '''
         # --------------------------------------------------
         utilities_layout = QtWidgets.QHBoxLayout()
         duplicate_button =QtWidgets.QPushButton("Duplicate")
@@ -169,19 +239,21 @@ class VenAutoRig(QtWidgets.QMainWindow):
         spawn_component_button.clicked.connect(self.spawn_guides)
 
         #component_layout.addLayout(name_layout)
-        component_layout.addLayout(side_layout)
-        component_layout.addLayout(utilities_layout)
-        component_layout.addWidget(spawn_component_button)
+        #component_layout.addLayout(side_layout)
 
+        component_layout.addWidget(spawn_component_button)
+        component_layout.addLayout(utilities_layout)
+        component_layout.addWidget(component_list_tabs)
         component_list_tabs.addTab(component_tab_widget, "Component")
 
         # --------------------------------------------------
         # --- Left side (templates) ---
+        '''
         template_tab_widget = QtWidgets.QWidget()
         template_layout = QtWidgets.QVBoxLayout(template_tab_widget)
 
         component_list_tabs.addTab(template_tab_widget, "Templates")
-
+        '''
         # --------------------------------------------------
         # --- Right side (Guide) ---
         self.guide_layout = QtWidgets.QVBoxLayout()
@@ -200,39 +272,50 @@ class VenAutoRig(QtWidgets.QMainWindow):
 
         guide_settings_button = QtWidgets.QPushButton("Generate Settings")
 
-        self.guide_layout.addWidget(group)
+
         self.guide_layout.addWidget(guide_settings_button)
+        self.guide_layout.addWidget(group)
         guide_settings_button.clicked.connect(self._populate_module)
 
         rig_content_layout.addLayout(component_layout,1)
         rig_content_layout.addLayout(self.guide_layout,3)
 
-        # --------------------------------------------------
-        # ------debug box-----
-        self.debug_box = QtWidgets.QPlainTextEdit()
-        self.debug_box.setReadOnly(True)
-        self.debug_box.setFixedHeight(100)
-        self.debug_box.appendPlainText(__doc__)
-        rig_main_layout.addWidget(self.debug_box)
-
-        # --------------------------------------------------
         #------ build button-----
         build_layout = QtWidgets.QHBoxLayout()
         #build_guide = QtWidgets.QPushButton("Update guide")
-        build_selected = QtWidgets.QPushButton("Spawn Selected")
+        build_selected = QtWidgets.QPushButton("Guides")
         build_selected.clicked.connect(lambda: self.spawn_joint(all=False))
-        build_joint = QtWidgets.QPushButton("Spawn Joints")
+        build_joint = QtWidgets.QPushButton("Joints")
         build_joint.clicked.connect(lambda: self.spawn_joint(all=True))
-        build_controller = QtWidgets.QPushButton("Spawn Controller")
+        build_controller = QtWidgets.QPushButton("Controller")
 
         build_layout.addWidget(build_selected)
         build_layout.addWidget(build_joint)
         build_layout.addWidget(build_controller)
-        rig_main_layout.addLayout(build_layout)
-
+        content_area.addLayout(build_layout)
         self.populate_treeview(self.component_tree_list)
         self.component_tree_list.expandAll()
-        self.main_tabs.addTab(rig_tab, "Rig")
+
+        return w
+
+    def build_debug_box(self):
+        w = QtWidgets.QGroupBox("Debug")
+        w.setMinimumSize(500,130)
+        l = QtWidgets.QVBoxLayout(w)
+        self.debug_box = QtWidgets.QPlainTextEdit()
+        self.debug_box.setReadOnly(True)
+        self.debug_box.setFixedHeight(100)
+        self.debug_box.appendPlainText(__doc__)
+        l.addWidget(self.debug_box)
+        return w
+
+    def build_section_three(self):
+        w = QtWidgets.QGroupBox("Section Three")
+        l = QtWidgets.QVBoxLayout(w)
+        l.addWidget(QtWidgets.QLabel("Content of Section THREE"))
+        l.addWidget(QtWidgets.QPushButton("Button C"))
+        return w
+
 
     def populate_treeview(self, tree_widget):
         self.component_widgets = {}
@@ -256,7 +339,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
         if tree_selection:
             selected = tree_selection.text(0)
 
-            self.useSide = self.sideCheck.isChecked()
+            self.useSide = None#self.sideCheck.isChecked()
             side = self.component_lists[tree_selection.parent().text(0)][selected]["attrs"]["comp_side"]["value"]
             if self.useSide:
                 side = self.sideRadioGrp.checkedButton().text()
@@ -351,10 +434,19 @@ class VenAutoRig(QtWidgets.QMainWindow):
             if base == "Arm" or base == "Leg":
                 primary_vec = self.axis_to_vector("x+")
                 up_vec = self.axis_to_vector("y+")
-
                 root = nodes[0]
                 elbow = nodes[1]
                 wrist = nodes[2]
+                '''
+                #auto parent for non IK Planar?
+                if len(nodes)>3:
+                    for node in nodes[3:]:
+                        print(nodes[2])
+                        print(node)
+                        #cmds.parent(node, nodes[2])
+                        
+                '''
+
                 for node in nodes[1:]:
                     cmds.parent(node, root_node)
                 base_name = naming_config.parse_and_build(nodes[0], new_order=("base", "side", "index"))
@@ -377,13 +469,30 @@ class VenAutoRig(QtWidgets.QMainWindow):
                     p=self.shapes_lists["one_arrow"],
                     n=full_name
                 )
-                cmds.matchTransform(pv_controller, elbow)
-
-
-                cmds.parent(pv_controller, root)
                 cmds.addAttr(pv_controller, longName="elbowRatio", attributeType="float", defaultValue=0.5, keyable=True)
 
+
+                # --- Root aim at Elbow --- ##NEED TO DO SMTH SO CAN EASILY CHANGE AXIS
+                cmds.aimConstraint(wrist, root, aimVector=primary_vec, upVector=self.axis_to_vector("z+"), worldUpType="object", worldUpObject=elbow)
+                cmds.aimConstraint(wrist, elbow, aimVector=primary_vec, upVector=self.axis_to_vector("y+"), worldUpType="objectrotation", worldUpObject=wrist)
+                
+                # --- Elbow between two points ---
+                elbow_offset = cmds.group(empty=True, p=root_node, n=f"{elbow}_offset")
+                #cmds.matchTransform(elbow_offset, elbow)
+                cmds.parent(elbow, elbow_offset, a=True)
+
+                bc = cmds.createNode("blendColors", name=f"BC_{base_name}")
+                cmds.connectAttr(root + ".translate", bc + ".color1", f=True)
+                cmds.connectAttr(wrist + ".translate", bc + ".color2", f=True)
+                cmds.connectAttr(pv_controller + ".elbowRatio", bc + ".blender", f=True)
+
+                # Drive elbow pos
+                cmds.connectAttr(bc + ".output", elbow_offset + ".translate", f=True)
+
+
+
                 # --- Pole Vector Position ---
+                '''
                 def build_auto_pv_nodes(root, elbow, wrist, axis=(0,0,1), offset_len=-10.0):
                     prefix = "{}_pv".format(elbow)
 
@@ -487,34 +596,49 @@ class VenAutoRig(QtWidgets.QMainWindow):
                     pv_decomp = cmds.createNode("decomposeMatrix", n=prefix + "_toLocal_DCM")
 
                     cmds.connectAttr(pv_comp + ".outputMatrix", pv_mult + ".matrixIn[0]", f=True)
-                    cmds.connectAttr(f"{root}.worldInverseMatrix[0]", pv_mult + ".matrixIn[1]", f=True)
+                    cmds.connectAttr(f"{root}.parentInverseMatrix[0]", pv_mult + ".matrixIn[1]", f=True)
 
                     # Result local translate
                     cmds.connectAttr(pv_mult + ".matrixSum", pv_decomp + ".inputMatrix", f=True)
                     cmds.connectAttr(pv_decomp + ".outputTranslate", f"{pv_controller}.translate", f=True)
-                    #return 
+                    #return
 
                     #cmds.connectAttr(pv_pma + ".output3D", pv_controller+ ".translate", f=True)
 
                 build_auto_pv_nodes(root, elbow, wrist)
+                '''
+                def get_world_pos(node):
+                    """Returns world position as MVector"""
+                    mtx = cmds.xform(node, q=True, ws=True, m=True)
+                    m = om.MMatrix(mtx)
+                    return om.MVector(m[12], m[13], m[14])
 
-                # --- Root aim at Elbow --- ##NEED TO DO SMTH SO CAN EASILY CHANGE AXIS
-                cmds.aimConstraint(wrist, root, aimVector=primary_vec, upVector=self.axis_to_vector("z+"), worldUpType="object", worldUpObject=elbow)
-                cmds.aimConstraint(wrist, elbow, aimVector=primary_vec, upVector=self.axis_to_vector("y+"), worldUpType="objectrotation", worldUpObject=wrist)
+                def build_auto_pv(root, elbow, wrist, offset_len=10.0, name="poleVector_LOC"):
+                    """
+                    Builds a PV locator offset along world Z, with automatic flip.
+                    """
 
-                # --- Elbow between two points ---
-                elbow_offset = cmds.group(empty=True, p=root_node, n=f"{elbow}_offset")
-                #cmds.matchTransform(elbow_offset, elbow)
-                cmds.parent(elbow, elbow_offset, a=True)
+                    p_root = get_world_pos(root)
+                    p_elbow = get_world_pos(elbow)
+                    p_wrist = get_world_pos(wrist)
 
-                bc = cmds.createNode("blendColors", name=f"BC_{base_name}")
-                cmds.connectAttr(root + ".translate", bc + ".color1", f=True)
-                cmds.connectAttr(wrist + ".translate", bc + ".color2", f=True)
-                cmds.connectAttr(pv_controller + ".elbowRatio", bc + ".blender", f=True)
+                    v_root_to_elbow = (p_elbow - p_root).normalize()
+                    v_elbow_to_wrist = (p_wrist - p_elbow).normalize()
 
-                # Drive elbow pos
-                cmds.connectAttr(bc + ".output", elbow_offset + ".translate", f=True)
 
+                    bend_dir = (v_root_to_elbow + v_elbow_to_wrist).normalize()
+                    z_axis = om.MVector(0, 0, 1)
+
+                    if bend_dir * z_axis < 0:
+                        z_axis *= -1
+
+
+                    pv_pos = p_elbow + z_axis * offset_len
+
+                    cmds.xform(pv_controller, ws=True, t=(pv_pos.x, pv_pos.y, pv_pos.z))
+                build_auto_pv(root, elbow, wrist, offset_len=15.0)
+                cmds.parent(pv_controller, root)
+                cmds.pointConstraint(elbow, pv_controller, mo=True)
             cmds.select(clear=True)
 
     def spawn_joint(self, all=False):
@@ -567,6 +691,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
         if hierarchy == False:
             parts = root_guide.split("|")
             curve_name = parts[-1].replace("root", "crv")
+            #print(curve_name)
             up_name = parts[-1].replace("root", "angle")
             if cmds.objExists(curve_name):
                 curve_shape = cmds.listRelatives(curve_name, s=True, fullPath=True)[0] or []
@@ -601,7 +726,6 @@ class VenAutoRig(QtWidgets.QMainWindow):
                 except RuntimeError:
                     cmds.warning(f"{jnt} is already parented under {parent}, skipping...")
 
-
     def create_guide_controller(self, isSphere=True, name=None, parent=None, pos=(0,0,0), rot=(0,0,0), r=0.5):
         if not isSphere:
             node = cmds.curve(
@@ -632,7 +756,6 @@ class VenAutoRig(QtWidgets.QMainWindow):
 
 
         if parent:
-
             cmds.parent(node, parent, r=True)
             cmds.xform(node, t=pos,  ro=rot)
             print(f"Parent True {node}, {pos}")
@@ -679,7 +802,6 @@ class VenAutoRig(QtWidgets.QMainWindow):
 
         return None
 
-
     def add_string(self, obj, name, type, *args, **kwargs):
         cmds.addAttr(obj, ln=name, dt="string")
         cmds.setAttr(f"{obj}.{name}", type.get("value", ""), type="string")
@@ -689,7 +811,7 @@ class VenAutoRig(QtWidgets.QMainWindow):
         cmds.setAttr(f"{obj}.{name}", e=True, k=True)
 
     def add_enum(self,obj, name, type, side, *args, **kwargs):
-        self.useSide = self.sideCheck.isChecked()
+        self.useSide = None #self.sideCheck.isChecked()
         value = str(type.get("value", None))
 
         if self.useSide:
