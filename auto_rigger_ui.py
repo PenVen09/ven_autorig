@@ -1,8 +1,11 @@
-"""
-AutoRig Tool
+"""AutoRig Tool
 why am i here
 to do:
 - better UI D:
+-Not sure if should combine fk chain with finger?(or should i make a converter?
+- each segment aim at child(mgear) similar to ik stuff
+- Custom Marking Menus
+- STreSS TeSt
 - guide have rotation value and better placement
 - rotation order
 - arrow pins
@@ -22,6 +25,7 @@ import maya.OpenMayaUI as omui
 from maya import cmds
 
 from . import naming_config
+from .naming_config import GLOBAL_CONFIG
 
 comments = "This is version 1.0"
 
@@ -29,6 +33,13 @@ class VenAutoRig(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(VenAutoRig, self).__init__(parent)
         self.setMinimumWidth(500)
+        self.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowTitleHint |
+            QtCore.Qt.WindowMinimizeButtonHint |
+            QtCore.Qt.WindowMaximizeButtonHint |
+            QtCore.Qt.WindowCloseButtonHint
+        )
         self.component_lists = {
             "General": {
                 "Joints": {
@@ -49,7 +60,7 @@ class VenAutoRig(QtWidgets.QDialog):
                 "FKIKChain": {
                     "position": [(0, 0, 0), (5, 0, 0), (5, 0, 0), (5, 0, 0)],
                     "rotation": [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)],
-                    "suffix": ["loc"],
+                    "suffix": ["chain"],
                     "attrs": {
                         "rigType": {"widget": "string", "value": "FKIKChain"},
                         "component_index": {"widget": "float", "value": "0"},
@@ -63,12 +74,27 @@ class VenAutoRig(QtWidgets.QDialog):
                 }
             },
             "Limbs": {
+                "Spine":{
+                    "position": [(0,0,0)],
+                    "rotation": [(0,0,0)],
+                    "suffix":["spine"],
+                    "attrs":{
+                        "rigType": {"widget": "string", "value": "spine"},
+                        "comp_side": {
+                            "widget": "enum",
+                            "options": ["Right", "Center", "Left"],
+                            "value": "Center"}
+
+                    }
+                },
+
+
                 "Shoulder": {
-                    "position": [(4, 143, 3), (20, 0, 0)],
-                    "rotation": [(0, 12, 0), (0, 0, 0)],
+                    "position": [(4, 143, 3), (0, 0, 20)],
+                    "rotation": [(0, 102, 0), (0, 0, 0)],
                     "suffix": ["shoulder", "tip"],
                     "attrs": {
-                        "rigType": {"widget": "string", "value": "arm"},
+                        "rigType": {"widget": "string", "value": "shoulder"},
                         "comp_side": {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
@@ -77,7 +103,7 @@ class VenAutoRig(QtWidgets.QDialog):
                 },
             },
                 "Arm": {
-                    "position": [(23.563, 143, -1.158), (0, 0, -6.948), (33.881, 0, 7.7)],
+                    "position": [(23.563, 143, -1.158), (0, 0, -6.948), (58.203, -18.818, 0.699)],
                     "rotation": [(0, 0, -35), (0, 0, 0), (0, 0, 0)],
                     "suffix": ["upperarm", "elbow", "wrist"],
                     "attrs": {
@@ -89,9 +115,22 @@ class VenAutoRig(QtWidgets.QDialog):
                         }
                     }
                 },
+                "Fingers": {
+                    "position": [(0,0,0), (5, 0, 0), (5, 0, 0), (5, 0, 0)],
+                    "rotation": [(0,0,0), (0,0,0), (0,0,0), (0,0,0)],
+                    "suffix": ["finger"],
+                    "attrs": {
+                        "rigType": {"widget": "string", "value": "finger"},
+                        "comp_side": {
+                            "widget": "enum",
+                            "options": ["Right", "Center", "Left"],
+                            "value": "Left"
+                        }
+                    }
+                },
                 "Leg": {
-                    "position": [(22.495, 75.582, 0), (0, 0, 14.255), (64, 0, -10.644)],
-                    "rotation": [(0, 0, -90), (0, 0, 0), (0, 0, 0)],
+                    "position": [(22.495, 75.582, 0), (0, 0, 14.255), (0, -64, -10.644)],
+                    "rotation": [(0, 0, 0), (0, 0, 0), (0, 0, 0)],
                     "suffix": ["hips", "knee", "ankle"],
                     "attrs": {
                         "rigType": {"widget": "string", "value": "leg"},
@@ -103,8 +142,16 @@ class VenAutoRig(QtWidgets.QDialog):
                     }
                 },
                 "Foot": {
-
-
+                    "position": [(22.495, 11.582, 3.611), (0, -5.7, 8.619), (0, -2.108, 8.619)],
+                    "rotation": [(0, 0, 0), (0, 0, 0), (0, 0, 0)],
+                    "suffix": ["foot", "toe", "toeend"],
+                    "attrs": {
+                        "rigType": {"widget": "string", "value": "foot"},
+                        "comp_side": {
+                            "widget": "enum",
+                            "options": ["Right", "Center", "Left"],
+                            "value": "Left"}
+                    }
 
                 }
             }
@@ -169,7 +216,6 @@ class VenAutoRig(QtWidgets.QDialog):
     def toggle_section(self, checked, builder_func, action):
         if checked:
             widget = builder_func()
-            widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
 
             self.section_widgets[action] = widget
             self.content_area.addWidget(widget, alignment=QtCore.Qt.AlignTop)
@@ -306,14 +352,16 @@ class VenAutoRig(QtWidgets.QDialog):
         self.debug_box.setReadOnly(True)
         self.debug_box.setFixedHeight(100)
         self.debug_box.appendPlainText(__doc__)
+        QtCore.QTimer.singleShot(0, lambda: self.debug_box.verticalScrollBar().setValue(0))
+
         l.addWidget(self.debug_box)
         return w
 
     def build_section_three(self):
-        w = QtWidgets.QGroupBox("Section Three")
+        w = QtWidgets.QGroupBox("group text")
         l = QtWidgets.QVBoxLayout(w)
-        l.addWidget(QtWidgets.QLabel("Content of Section THREE"))
-        l.addWidget(QtWidgets.QPushButton("Button C"))
+        l.addWidget(QtWidgets.QLabel("lol"))
+        l.addWidget(QtWidgets.QPushButton("idk"))
         return w
 
 
@@ -339,6 +387,10 @@ class VenAutoRig(QtWidgets.QDialog):
         if tree_selection:
             selected = tree_selection.text(0)
 
+            if selected == "Fingers":
+
+                pass
+
             self.useSide = None#self.sideCheck.isChecked()
             side = self.component_lists[tree_selection.parent().text(0)][selected]["attrs"]["comp_side"]["value"]
             if self.useSide:
@@ -346,17 +398,17 @@ class VenAutoRig(QtWidgets.QDialog):
 
 
             suffix = self.component_lists[tree_selection.parent().text(0)][selected]["suffix"]
-            base = selected
+            base = selected#should be fine since select from tree
             side_index = 0
             position = self.component_lists[tree_selection.parent().text(0)][selected]["position"]
             rotation = self.component_lists[tree_selection.parent().text(0)][selected]["rotation"]
             ctx = naming_config.NamingContext(base, side, "guide", suffix[0])
-            full_name = naming_config.get_unique_name(ctx)
+
             guide_length = len(position)
 
             if guide_length > 1:
                 ctx.suffix = "crv"
-                full_name = naming_config.get_unique_name(ctx)
+                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                 ep_curve = cmds.curve(d=1, p=position, name=full_name)
                 ep_shape = self.rename_shape(ep_curve)
                 cmds.setAttr(f"{ep_curve}.template", 1)
@@ -368,13 +420,16 @@ class VenAutoRig(QtWidgets.QDialog):
             for ctx.index, (pos, rot, suffix) in enumerate(zip_longest(position, rotation, suffix, fillvalue=suffix[-1])):
                 """ Might need to fix how the enumerate/index work for controlPoints(if index is changeable by user)"""
                 ctx.suffix = suffix
-                full_name = naming_config.get_unique_name(ctx)
+                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                 if ctx.index == 0:
                     parent_node = self.create_guide_controller(True, full_name, None, pos, rot)
+                    parent_shape = cmds.listRelatives(parent_node, shapes=True, fullPath=True)[0]
+                    cmds.setAttr(f"{parent_shape}.visibility", 0)
 
                     ctx.suffix = "root"
-                    full_name = naming_config.get_unique_name(ctx)
+                    full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                     root_node = self.create_guide_controller(False, full_name, None, pos, rot, r=0.8)
+
 
                     cmds.parent(parent_node, root_node)
                     nodes.append(parent_node)
@@ -390,12 +445,14 @@ class VenAutoRig(QtWidgets.QDialog):
 
                     if not selection:
                         guide_group = cmds.group(empty=True, world=True, n="guide")#Later need to add variable to name guide
+                        cmds.group(empty=True, parent=guide_group, n="controller_guide")
                         cmds.parent(root_node, guide_group, absolute=True)
-                        cmds.addAttr(guide_group, longName="isGuide", attributeType="bool", defaultValue=1, keyable=True)
+                        cmds.addAttr(guide_group, longName="isGuide", attributeType="bool", defaultValue=1, keyable=False)
+                        cmds.setAttr(f"{guide_group}.isGuide",cb=False)
                         cmds.addAttr(guide_group, longName="jointOrder", dt="string")
-                        cmds.setAttr(f"{guide_group}.jointOrder", str(naming_config.NAMING_PREFS["order"]), type="string")
+                        cmds.setAttr(f"{guide_group}.jointOrder", str(GLOBAL_CONFIG.order), type="string")
                         cmds.addAttr(guide_group, longName="ctrlOrder", dt="string")
-                        cmds.setAttr(f"{guide_group}.ctrlOrder", str(naming_config.NAMING_PREFS["order"]), type="string")
+                        cmds.setAttr(f"{guide_group}.ctrlOrder", str(GLOBAL_CONFIG.order), type="string")
                     elif len(selection) > 1:
                         cmds.warning("More than 1 selection detected")
                     else:
@@ -422,15 +479,16 @@ class VenAutoRig(QtWidgets.QDialog):
                     child_node = self.create_guide_controller(True, full_name, parent_node, pos, rot)
                     nodes.append(child_node)
 
-                    cmds.addAttr(child_node, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=True)
-
+                    cmds.addAttr(child_node, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=False)
+                    cmds.setAttr(f"{child_node}.isVenGuide", cb=False)
                     #Probably will make this below as method soon
-                    world_space = cmds.createNode("decomposeMatrix", name=f"{parent_node}" + "_ws")
+                    world_space = cmds.createNode("decomposeMatrix", name=f"{child_node}" + "_ws")
                     cmds.connectAttr(f"{child_node}.worldMatrix[0]", f"{world_space}.inputMatrix", f=True)
                     cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{ctx.index}]")
 
                     parent_node = child_node
 
+            #type = cmds.getAttr(f"{base}.rigType")
             if base == "Arm" or base == "Leg":
                 primary_vec = self.axis_to_vector("x+")
                 up_vec = self.axis_to_vector("y+")
@@ -449,12 +507,14 @@ class VenAutoRig(QtWidgets.QDialog):
 
                 for node in nodes[1:]:
                     cmds.parent(node, root_node)
-                base_name = naming_config.parse_and_build(nodes[0], new_order=("base", "side", "index"))
+
+                parts = GLOBAL_CONFIG.from_string(nodes[0])
+                base_name = naming_config.NamingContext.build(parts, new_order=naming_config.NAMING_PREFS["node_order"])
 
                 # --- Spawn pole vector arrow ---
                 ctx.index = 0 #revisit later
                 ctx.suffix = "angle"
-                full_name = naming_config.get_unique_name(ctx)
+                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                 angle_controller = cmds.curve(
                     d=1,
                     p=self.shapes_lists["one_arrow"],
@@ -462,8 +522,9 @@ class VenAutoRig(QtWidgets.QDialog):
                 )
                 cmds.matchTransform(angle_controller, root_node)
                 cmds.parent(angle_controller, root)
+                cmds.rotate(90,0,0, angle_controller)
                 ctx.suffix = "pv_dir"
-                full_name = naming_config.get_unique_name(ctx)
+                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                 pv_controller = cmds.curve(
                     d=1,
                     p=self.shapes_lists["one_arrow"],
@@ -473,12 +534,11 @@ class VenAutoRig(QtWidgets.QDialog):
 
 
                 # --- Root aim at Elbow --- ##NEED TO DO SMTH SO CAN EASILY CHANGE AXIS
-                cmds.aimConstraint(wrist, root, aimVector=primary_vec, upVector=self.axis_to_vector("z+"), worldUpType="object", worldUpObject=elbow)
+                cmds.aimConstraint(wrist, root, aimVector=primary_vec, upVector=self.axis_to_vector("y+"), worldUpType="object", worldUpObject=elbow)
                 cmds.aimConstraint(wrist, elbow, aimVector=primary_vec, upVector=self.axis_to_vector("y+"), worldUpType="objectrotation", worldUpObject=wrist)
                 
                 # --- Elbow between two points ---
                 elbow_offset = cmds.group(empty=True, p=root_node, n=f"{elbow}_offset")
-                #cmds.matchTransform(elbow_offset, elbow)
                 cmds.parent(elbow, elbow_offset, a=True)
 
                 bc = cmds.createNode("blendColors", name=f"BC_{base_name}")
@@ -489,131 +549,31 @@ class VenAutoRig(QtWidgets.QDialog):
                 # Drive elbow pos
                 cmds.connectAttr(bc + ".output", elbow_offset + ".translate", f=True)
 
-
-
                 # --- Pole Vector Position ---
-                '''
-                def build_auto_pv_nodes(root, elbow, wrist, axis=(0,0,1), offset_len=-10.0):
-                    prefix = "{}_pv".format(elbow)
-
-                    # --- Decompose matrices to get world positions ---
-                    dm_root = cmds.createNode("decomposeMatrix", name=prefix + "_root_DM")
-                    cmds.connectAttr(root + ".worldMatrix[0]", dm_root + ".inputMatrix", f=True)
-
-                    dm_elbow = cmds.createNode("decomposeMatrix", name=prefix + "_elbow_DM")
-                    cmds.connectAttr(elbow + ".worldMatrix[0]", dm_elbow + ".inputMatrix", f=True)
-
-                    dm_wrist = cmds.createNode("decomposeMatrix", name=prefix + "_wrist_DM")
-                    cmds.connectAttr(wrist + ".worldMatrix[0]", dm_wrist + ".inputMatrix", f=True)
-
-                    # --- v_rm = mid - root ---
-                    v_rm = cmds.createNode("plusMinusAverage", name=prefix + "_v_rm_PMA")
-                    cmds.setAttr(v_rm + ".operation", 2)  # subtract
-                    cmds.connectAttr(dm_elbow + ".outputTranslate", v_rm + ".input3D[0]", f=True)
-                    cmds.connectAttr(dm_root + ".outputTranslate",  v_rm + ".input3D[1]", f=True)
-
-                    # --- v_re = end - root ---
-                    v_re = cmds.createNode("plusMinusAverage", name=prefix + "_v_re_PMA")
-                    cmds.setAttr(v_re + ".operation", 2)
-                    cmds.connectAttr(dm_wrist + ".outputTranslate", v_re + ".input3D[0]", f=True)
-                    cmds.connectAttr(dm_root + ".outputTranslate",  v_re + ".input3D[1]", f=True)
-
-                    # --- dot = v_rm · v_re ---
-                    dot_v = cmds.createNode("vectorProduct", name=prefix + "_dot_VP")
-                    cmds.setAttr(dot_v + ".operation", 1)  # dot product
-                    cmds.connectAttr(v_rm + ".output3D", dot_v + ".input1", f=True)
-                    cmds.connectAttr(v_re + ".output3D", dot_v + ".input2", f=True)
-
-                    # --- len = v_re · v_re ---
-                    len = cmds.createNode("vectorProduct", name=prefix + "_lenVP")
-                    cmds.setAttr(len + ".operation", 1)  # dot
-                    cmds.connectAttr(v_re + ".output3D", len + ".input1", f=True)
-                    cmds.connectAttr(v_re + ".output3D", len + ".input2", f=True)
-
-                    # --- scale = dot / len  (scalar) ---
-                    scale_md = cmds.createNode("multiplyDivide", name=prefix + "_scale_MD")
-                    cmds.setAttr(scale_md + ".operation", 2)  # divide
-                    cmds.connectAttr(dot_v + ".outputX", scale_md + ".input1X", f=True)
-                    cmds.connectAttr(len + ".outputX", scale_md + ".input2X", f=True)
-
-                    # --- proj = v_re * scale  (vector) ---
-                    proj_md = cmds.createNode("multiplyDivide", name=prefix + "_proj_MD")
-                    cmds.setAttr(proj_md + ".operation", 1)
-
-                    cmds.connectAttr(v_re + ".output3D", proj_md + ".input1", f=True)
-
-                    cmds.connectAttr(scale_md + ".outputX", proj_md + ".input2X", f=True)
-                    cmds.connectAttr(scale_md + ".outputX", proj_md + ".input2Y", f=True)
-                    cmds.connectAttr(scale_md + ".outputX", proj_md + ".input2Z", f=True)
-
-                    # --- offset = v_rm - proj ---
-                    offset_pma = cmds.createNode("plusMinusAverage", name=prefix + "_offset_PMA")
-                    cmds.setAttr(offset_pma + ".operation", 2)  # subtract
-                    cmds.connectAttr(v_rm + ".output3D", offset_pma + ".input3D[0]", f=True)
-                    cmds.connectAttr(proj_md + ".output", offset_pma + ".input3D[1]", f=True)
-
-                    # --- dotOffsetAxis = offset * ref_axis ---
-                    dotOffset = cmds.createNode("vectorProduct", name=prefix + "_dotOffset_VP")
-                    cmds.setAttr(dotOffset + ".operation", 1)  # dot product
-                    cmds.connectAttr(offset_pma + ".output3D", dotOffset + ".input1", f=True)
-                    # set input2 to the chosen axis
-                    cmds.setAttr(dotOffset + ".input2", axis[0], axis[1], axis[2], type="double3")
-
-                    # --- condition: if dotOffset < 0 : -1 else 1 ---
-                    cond = cmds.createNode("condition", name=prefix + "_flip_COND")
-                    cmds.setAttr(cond + ".operation", 2)  # Less Than
-                    cmds.connectAttr(dotOffset + ".outputX", cond + ".firstTerm", f=True)
-                    cmds.setAttr(cond + ".secondTerm", 0.0)
-                    cmds.setAttr(cond + ".colorIfTrueR", -1.0)   # dot < 0 -> -1
-                    cmds.setAttr(cond + ".colorIfFalseR", 1.0)   # else -> 1
-
-                    # --- build the offset vector along axis scaled by offset_len ---
-                    axis_md = cmds.createNode("multiplyDivide", name=prefix + "_axisScale_MD")
-                    cmds.setAttr(axis_md + ".operation", 1)  # multiply
-                    cmds.setAttr(axis_md + ".input1", axis[0], axis[1], axis[2], type="double3")
-                    cmds.setAttr(axis_md + ".input2", offset_len, offset_len, offset_len)
-
-                    # --- apply flip scalar to axis vector (multiply by -1 or 1) ---
-                    flip_md = cmds.createNode("multiplyDivide", name=prefix + "_flipApply_MD")
-                    cmds.setAttr(flip_md + ".operation", 1)  # multiply
-                    cmds.connectAttr(axis_md + ".output", flip_md + ".input1", f=True)
-                    # connect scalar from condition to input2 X/Y/Z
-                    cmds.connectAttr(cond + ".outColorR", flip_md + ".input2X", f=True)
-                    cmds.connectAttr(cond + ".outColorR", flip_md + ".input2Y", f=True)
-                    cmds.connectAttr(cond + ".outColorR", flip_md + ".input2Z", f=True)
-
-                    # --- final PV position in world space = elbow + offset vector ---
-                    pv_pma = cmds.createNode("plusMinusAverage", name=prefix + "_pvPos_PMA")
-                    cmds.setAttr(pv_pma + ".operation", 1)  # add
-                    cmds.connectAttr(dm_elbow + ".outputTranslate", pv_pma + ".input3D[0]", f=True)
-                    cmds.connectAttr(flip_md + ".output", pv_pma + ".input3D[1]", f=True)
-
-
-                    # Convert to root space
-                    pv_comp = cmds.createNode("composeMatrix", n=prefix + "_pvPos_CMP")
-                    cmds.connectAttr(pv_pma + ".output3D", pv_comp + ".inputTranslate", f=True)
-                    pv_mult = cmds.createNode("multMatrix", n=prefix + "_toLocal_MMT")
-                    pv_decomp = cmds.createNode("decomposeMatrix", n=prefix + "_toLocal_DCM")
-
-                    cmds.connectAttr(pv_comp + ".outputMatrix", pv_mult + ".matrixIn[0]", f=True)
-                    cmds.connectAttr(f"{root}.parentInverseMatrix[0]", pv_mult + ".matrixIn[1]", f=True)
-
-                    # Result local translate
-                    cmds.connectAttr(pv_mult + ".matrixSum", pv_decomp + ".inputMatrix", f=True)
-                    cmds.connectAttr(pv_decomp + ".outputTranslate", f"{pv_controller}.translate", f=True)
-                    #return
-
-                    #cmds.connectAttr(pv_pma + ".output3D", pv_controller+ ".translate", f=True)
-
-                build_auto_pv_nodes(root, elbow, wrist)
-                '''
                 def get_world_pos(node):
                     """Returns world position as MVector"""
                     mtx = cmds.xform(node, q=True, ws=True, m=True)
                     m = om.MMatrix(mtx)
                     return om.MVector(m[12], m[13], m[14])
 
-                def build_auto_pv(root, elbow, wrist, offset_len=10.0, name="poleVector_LOC"):
+                def get_local_axis_world(node, axis='y'):
+                    """
+                    Returns the world-space vector of a node's local axis.
+                    axis: 'x', 'y', or 'z'
+                    """
+                    mtx = cmds.xform(node, q=True, ws=True, m=True)
+                    m = om.MMatrix(mtx)
+
+                    if axis.lower() == 'x':
+                        v = om.MVector(m[0], m[4], m[8])
+                    elif axis.lower() == 'y':
+                        v = om.MVector(m[1], m[5], m[9])
+                    else:  # 'z'
+                        v = om.MVector(m[2], m[6], m[10])
+
+                    return v.normalize()
+
+                def build_auto_pv(root, elbow, wrist, up, offset_len=10.0):
                     """
                     Builds a PV locator offset along world Z, with automatic flip.
                     """
@@ -621,24 +581,58 @@ class VenAutoRig(QtWidgets.QDialog):
                     p_root = get_world_pos(root)
                     p_elbow = get_world_pos(elbow)
                     p_wrist = get_world_pos(wrist)
+                    p_up = get_local_axis_world(up, axis='z')
+                    #print(p_up)
 
                     v_root_to_elbow = (p_elbow - p_root).normalize()
                     v_elbow_to_wrist = (p_wrist - p_elbow).normalize()
 
-
-                    bend_dir = (v_root_to_elbow + v_elbow_to_wrist).normalize()
                     z_axis = om.MVector(0, 0, 1)
 
-                    if bend_dir * z_axis < 0:
+                    if p_up[-1] > 0:
                         z_axis *= -1
-
 
                     pv_pos = p_elbow + z_axis * offset_len
 
                     cmds.xform(pv_controller, ws=True, t=(pv_pos.x, pv_pos.y, pv_pos.z))
-                build_auto_pv(root, elbow, wrist, offset_len=15.0)
+                    return pv_pos
+
+                build_auto_pv(root, elbow, wrist, angle_controller, offset_len=15.0)
+
                 cmds.parent(pv_controller, root)
                 cmds.pointConstraint(elbow, pv_controller, mo=True)
+
+
+            elif base == "Foot":
+                foot_list = {
+                    "heel":(0, -7.829, -3.469),
+                    "out":(4.555, -8.734, 9.097),
+                    "in":(-3.643, -8.734, 9.097)
+                    }
+                ctx.index = 0
+                for name, pos in foot_list.items():
+                    ctx.suffix = f"{name}crv"
+                    full_name = GLOBAL_CONFIG.get_unique_name(ctx)
+                    ep_curve = cmds.curve(d=1, p=[(0,0,0),(0,0,0)], name=full_name)
+                    ep_shape = self.rename_shape(ep_curve)
+
+                    cmds.parent(ep_curve, ep_offset)
+                    cmds.setAttr(f"{ep_curve}.template", 1)
+                    cmds.setAttr(f"{ep_curve}.lineWidth", 1.5)
+
+                    node_name = f"{nodes[0]}_ws"
+                    if not cmds.objExists(node_name):
+                        cmds.createNode("decomposeMatrix", name=f"{nodes[0]}" + "_ws")
+                        cmds.connectAttr(f"{nodes[0]}.worldMatrix[0]", f"{node_name}.inputMatrix", f=True)
+                    cmds.connectAttr(f"{node_name}.outputTranslate", f"{ep_shape}.controlPoints[0]")
+
+                    ctx.suffix = name
+                    full_name = GLOBAL_CONFIG.get_unique_name(ctx)
+                    new_node = self.create_guide_controller(True, full_name, nodes[0], pos, (0,0,0), r=0.8)
+
+                    new_space = cmds.createNode("decomposeMatrix", name=f"{new_node}" + "_ws")
+                    cmds.connectAttr(f"{new_node}.worldMatrix[0]", f"{new_space}.inputMatrix", f=True)
+                    cmds.connectAttr(f"{new_space}.outputTranslate", f"{ep_shape}.controlPoints[1]")
             cmds.select(clear=True)
 
     def spawn_joint(self, all=False):
@@ -677,6 +671,7 @@ class VenAutoRig(QtWidgets.QDialog):
         """
         Build joint based on guides that contain "isVenGuide"
         """
+
         visited = set()
         joints = {}
         if root_guide in visited:
@@ -691,7 +686,6 @@ class VenAutoRig(QtWidgets.QDialog):
         if hierarchy == False:
             parts = root_guide.split("|")
             curve_name = parts[-1].replace("root", "crv")
-            #print(curve_name)
             up_name = parts[-1].replace("root", "angle")
             if cmds.objExists(curve_name):
                 curve_shape = cmds.listRelatives(curve_name, s=True, fullPath=True)[0] or []
@@ -701,32 +695,76 @@ class VenAutoRig(QtWidgets.QDialog):
                     attr = f"{curve_shape}.controlPoints[{i}]"
                     guide = self.find_guide(attr)
                     guide_list.append(guide)
+
+
             else:
                 cmds.warning(f"No curve found for {root_guide}")
                 return
 
-        for guide in guide_list:
+        type = cmds.getAttr(f"{root_guide}.rigType")
+        guides = guide_list
+
+        if type == "shoulder":
+            guides = guide_list[:1]
+        elif type == "foot":
+            guides = guide_list[1:]
+
+        for guide in guides:
             pos = cmds.xform(guide, q=True, ws=True, t=True)
             base_guide = guide.split("|")[-1]
-            joint_name = naming_config.parse_and_build(base_guide, prefix="joint")
+
+            ctx = GLOBAL_CONFIG.from_string(base_guide)
+            ctx.stage = "joint"
+            joint_name = naming_config.NamingContext.build(ctx)
+
             jnt = cmds.createNode("joint", name=joint_name)
+
             cmds.xform(jnt, ws=True, t=pos)
+
             if not cmds.objExists(up_name):
                 up_name = root_guide
+
             if parent:
                 try:
                     if cmds.objectType(parent) == "joint":
-                        aim = cmds.aimConstraint(jnt, parent, aimVector=self.axis_to_vector("x+"), upVector=self.axis_to_vector("y+"), worldUpType="objectrotation", worldUpObject=up_name)
+
+                        aim = cmds.aimConstraint(jnt, parent, aimVector=self.axis_to_vector("x+"), upVector=self.axis_to_vector("z+"), worldUpType="objectrotation", worldUpObject=up_name)
                         cmds.delete(aim)
                         cmds.makeIdentity(parent, apply=True, rotate=True, translate=False, scale=False)
 
+
                     cmds.parent(jnt, parent)
+                    if guide == guide_list[-1]:
+                            cmds.setAttr(jnt + ".jointOrientX", 0)
+                            cmds.setAttr(jnt + ".jointOrientY", 0)
+                            cmds.setAttr(jnt + ".jointOrientZ", 0)
                     parent = jnt
 
                 except RuntimeError:
                     cmds.warning(f"{jnt} is already parented under {parent}, skipping...")
 
-    def create_guide_controller(self, isSphere=True, name=None, parent=None, pos=(0,0,0), rot=(0,0,0), r=0.5):
+            if guide == guides[0]:#clean naming later
+                parenta = cmds.listRelatives(root_guide, parent=True)
+                while parenta:
+                    guide_parent = parenta[0]
+                    if guide_parent == "guide":
+                        break
+                    # Convert guide name → joint name (e.g. hips_g → hips_jnt)
+                    base_guide = guide_parent.split("|")[-1]
+                    ctx = GLOBAL_CONFIG.from_string(base_guide)
+                    ctx.stage = "joint"
+                    temp = naming_config.NamingContext.build(ctx)
+                    primary_axis = naming_config.AXIS_PREFS["primary"]
+                    if cmds.objExists(temp):
+                        aim = cmds.aimConstraint(jnt, temp, aimVector=self.axis_to_vector(primary_axis), upVector=self.axis_to_vector("z+"), worldUpType="objectrotation", worldUpObject=up_name)
+                        cmds.delete(aim)
+                        cmds.parent(jnt, temp)
+                        break
+                    # keep climbing up
+                    parenta = cmds.listRelatives(guide_parent, parent=True)
+
+
+    def create_guide_controller(self, isSphere=True, name=None, parent=None, pos=(0,0,0), rot=(0,0,0), r=0.5, color =None):
         if not isSphere:
             node = cmds.curve(
                 d=1,
@@ -755,10 +793,14 @@ class VenAutoRig(QtWidgets.QDialog):
             cmds.setAttr(node + ".overrideColor", 17)
 
 
+        if color:
+            cmds.setAttr(node + ".overrideColor", color)
+
+
         if parent:
             cmds.parent(node, parent, r=True)
             cmds.xform(node, t=pos,  ro=rot)
-            print(f"Parent True {node}, {pos}")
+            #print(f"Parent True {node}, {pos}")
         else:
             cmds.xform(node, t=pos)
             cmds.rotate(rot[0], rot[1], rot[2], node, rotateXYZ=True)
@@ -783,7 +825,37 @@ class VenAutoRig(QtWidgets.QDialog):
         if axis == "z-": return (0,0,-1)
         raise ValueError("Invalid axis: " + axis)
 
-    def find_guide(self, attr):
+    def _populate_module(self):
+        root = self.find_root()
+        type = cmds.getAttr(f"{root}.rigType")
+        side = cmds.getAttr(f"{root}.comp_side")
+        temp_side_list = {0:"Right", 1:"Center", 2: "Left"}
+
+        self._clear_layout(self.guide_settings_layout)
+        widget, button, layout = self._collapsible_button(f"{type.capitalize()} -> {temp_side_list[side]}")
+
+
+        self.guide_settings_layout.addWidget(widget)
+
+    def find_root(self, name="root"):
+        """Keep climbing till find root"""
+        selection = cmds.ls(selection=True)
+        if len(selection) == 1:
+            selected = selection[0]
+            if not name in selected:
+                parent = cmds.listRelatives(selected, parent=True)
+
+                while parent:
+                    parent = parent[0]
+                    if parent.endswith(f"_{name}"):
+                        return parent
+                    parent = cmds.listRelatives(parent, parent=True)
+            else:
+                return selected
+        else:
+            cmds.warning("Select only 1 at this moment, will be updated soon")
+
+    def find_guide(self, attr, name = "isVenGuide"):
         """Climb up until a node with 'isVenGuide' is found."""
         nodes = cmds.listConnections(attr, s=True, d=False) or []
         visited = set()
@@ -794,7 +866,7 @@ class VenAutoRig(QtWidgets.QDialog):
                 break
             visited.add(node)
             node_long = cmds.ls(node, long=True)[0]
-            if cmds.attributeQuery("isVenGuide", node=node, exists=True):
+            if cmds.attributeQuery(name, node=node, exists=True):
                 return node_long
 
             # otherwise keep climbing up
@@ -806,11 +878,11 @@ class VenAutoRig(QtWidgets.QDialog):
         cmds.addAttr(obj, ln=name, dt="string")
         cmds.setAttr(f"{obj}.{name}", type.get("value", ""), type="string")
 
-    def add_bool(self,obj, name, type, *args, **kwargs):
-        cmds.addAttr(obj, ln=name, at="bool", dv=int(type.get("value", False)))
-        cmds.setAttr(f"{obj}.{name}", e=True, k=True)
+    def add_bool(self,obj, name, type, cb=False, key=False, *args, **kwargs):
+        cmds.addAttr(obj, ln=name, at="bool", dv=int(type.get("value", False)), k=key)
+        cmds.setAttr(f"{obj}.{name}", e=True, k=True, cb=cb)
 
-    def add_enum(self,obj, name, type, side, *args, **kwargs):
+    def add_enum(self,obj, name, type, side, cb=False, key=False, *args, **kwargs):
         self.useSide = None #self.sideCheck.isChecked()
         value = str(type.get("value", None))
 
@@ -821,22 +893,22 @@ class VenAutoRig(QtWidgets.QDialog):
             "comp_side": value,
             }
         opts = ":".join(type.get("options", []))
-        cmds.addAttr(obj, ln=name, at="enum", en=opts)
+        cmds.addAttr(obj, ln=name, at="enum", en=opts, k=key)
 
         value = OVERRIDES.get(name, value)
         if "value" in type:
             idx = type["options"].index(value)
-            cmds.setAttr(f"{obj}.{name}", idx)
+            cmds.setAttr(f"{obj}.{name}", idx, cb=cb)
 
-    def add_float(self, obj, name, type, index, *args, **kwargs):
+    def add_float(self, obj, name, type, index, cb=False, key=False, *args, **kwargs):
         """ Maybe will optimize the override stuff later"""
         OVERRIDES = {
                     "component_index": index,
                     }
         value = float(type.get("value", 0.0))
         value = OVERRIDES.get(name, value)
-        cmds.addAttr(obj, ln=name, at="float", dv=value)
-        cmds.setAttr(f"{obj}.{name}", e=True, k=True)
+        cmds.addAttr(obj, ln=name, at="float", dv=value, k=key)
+        cmds.setAttr(f"{obj}.{name}", e=True, k=True, cb=cb)
 
     def _separator(self):
         """ Spawn separator based on this style """
@@ -846,6 +918,11 @@ class VenAutoRig(QtWidgets.QDialog):
         line.setStyleSheet("margin-top: 5px; margin-bottom: 5px;")
         return line
 
+    def _chain_length_popup(self):
+        """idk window with spinbox, direction, spacing"""
+        pass
+
+    #lol why did i copy a few of this, delete later
     def _collapsible_button(self, label_text, isVisible=True) -> Tuple[QWidget, QPushButton, QVBoxLayout]:
         """ Spawn a collapsible button widget, return some widget that can be parented under other layout """
         section_widget = QtWidgets.QWidget()
@@ -900,11 +977,6 @@ class VenAutoRig(QtWidgets.QDialog):
         buttons.setArrowType(QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow)
         collapse_widget.setVisible(not checked)
 
-    def _populate_module(self):
-        self._clear_layout(self.guide_settings_layout)
-        widget, button, layout = self._collapsible_button("Test")
-        selection = cmds.ls(select=True)
-        self.guide_settings_layout.addWidget(widget)
 
     def _clear_layout(self, layout):
         while layout.count():
