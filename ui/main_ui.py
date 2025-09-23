@@ -1,6 +1,7 @@
 """AutoRig Tool
 why am i here
 to do:
+- reroute errors to debug box
 - better UI D:
 -Not sure if should combine fk chain with finger?(or should i make a converter?
 - each segment aim at child(mgear) similar to ik stuff
@@ -16,16 +17,22 @@ to do:
 - unreal/unity based naming convention changer
 """
 from typing import Tuple
+import time
 from itertools import zip_longest
 from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QWidget, QPushButton, QVBoxLayout
 import maya.api.OpenMaya as om
 from maya import cmds
 
+
+from . import widgets
+
 from ..config import naming, guides_list, shapes
 from ..config.naming import GLOBAL_CONFIG
 
 from ..utils import maya_utils
+
+from ..core import attrs
 
 comments = "This is version 1.0"
 
@@ -229,8 +236,8 @@ class VenAutoRig(QtWidgets.QDialog):
         self.debug_box = QtWidgets.QPlainTextEdit()
         self.debug_box.setReadOnly(True)
         self.debug_box.setFixedHeight(100)
-        self.debug_box.appendPlainText(__doc__)
-        QtCore.QTimer.singleShot(0, lambda: self.debug_box.verticalScrollBar().setValue(0))
+        #self.debug_box.appendPlainText(__doc__)
+        #QtCore.QTimer.singleShot(0, lambda: self.debug_box.verticalScrollBar().setValue(0))
 
         l.addWidget(self.debug_box)
         return w
@@ -252,20 +259,31 @@ class VenAutoRig(QtWidgets.QDialog):
             for child, info in children.items():
                 QtWidgets.QTreeWidgetItem(tree_item, [child])
 
+    def spawn_section_window(self):
+        dialog = QtWidgets.QDialog()
+        dialog.setWindowTitle("Manage Section")
+        dialog.resize(400, 300)
+        main_layout = QtWidgets.QVBoxLayout(dialog)
+
+
+        accept_btn = QtWidgets.QPushButton("Accept")
+        cancel_btn =QtWidgets.QPushButton("Cancel")
+        main_layout.addWidget(accept_btn)
+        main_layout.addWidget(cancel_btn)
+
+        result = dialog.exec_()
+        pass
+
+
+    @maya_utils.one_undo
     def spawn_guides(self):
-        ATTR_BUILDERS = {
-                        "string": self.add_string,
-                        "bool": self.add_bool,
-                        "enum": self.add_enum,
-                        "float": self.add_float,
-                        }
         tree_selection = self.component_tree_list.currentItem()
         selection = cmds.ls(selection=True)
         if tree_selection:
             selected = tree_selection.text(0)
-
-            if selected == "Fingers":
-
+            add_section_list = ["Fingers", "Spine", "FKIKChain"]
+            if selected in add_section_list:
+                self.spawn_length_window()
                 pass
 
             self.useSide = None#self.sideCheck.isChecked()
@@ -315,9 +333,8 @@ class VenAutoRig(QtWidgets.QDialog):
                     attributes = guides_list.component_lists[tree_selection.parent().text(0)][selected]["attrs"]
 
                     for atb, item in attributes.items():
-                        type = item["widget"]
-                        build_fn = ATTR_BUILDERS[type]
-                        build_fn(root_node, atb, item, index=ctx.subindex, side=side)
+                        builder = attrs.AttrBuilder()
+                        builder.add_attr(root_node, atb, item, index=ctx.subindex, side=side)
 
                     self.rename_shape(root_node)
 
@@ -359,6 +376,7 @@ class VenAutoRig(QtWidgets.QDialog):
 
                     cmds.addAttr(child_node, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=False)
                     cmds.setAttr(f"{child_node}.isVenGuide", cb=False)
+
                     #Probably will make this below as method soon
                     world_space = cmds.createNode("decomposeMatrix", name=f"{child_node}" + "_ws")
                     cmds.connectAttr(f"{child_node}.worldMatrix[0]", f"{world_space}.inputMatrix", f=True)
@@ -480,7 +498,6 @@ class VenAutoRig(QtWidgets.QDialog):
                 cmds.parent(pv_controller, root)
                 cmds.pointConstraint(elbow, pv_controller, mo=True)
 
-
             elif base == "Foot":
                 foot_list = {
                     "heel":(0, -7.829, -3.469),
@@ -513,6 +530,9 @@ class VenAutoRig(QtWidgets.QDialog):
                     cmds.connectAttr(f"{new_space}.outputTranslate", f"{ep_shape}.controlPoints[1]")
             cmds.select(clear=True)
 
+            self.log("Spawned Guides")
+
+    @maya_utils.one_undo
     def spawn_joint(self, all=False):
         if all:
             all_descendants = cmds.listRelatives("guide", ad=True, type="transform", fullPath=True)#need to not harcode
@@ -581,10 +601,9 @@ class VenAutoRig(QtWidgets.QDialog):
 
         type = cmds.getAttr(f"{root_guide}.rigType")
         guides = guide_list
-
-        if type == "shoulder":
-            guides = guide_list[:1]
-        elif type == "foot":
+        if type == "shoulder" or type ==  "finger":
+            guides = guide_list[:-1]
+        elif type == "foot" :
             guides = guide_list[1:]
 
         for guide in guides:
@@ -713,13 +732,15 @@ class VenAutoRig(QtWidgets.QDialog):
 
             widget, button, layout = self._collapsible_button(f"{type.capitalize()} -> {temp_side_list[side]}")
             layout.setSpacing(0)
+
             self.attr_wrappers = []
 
             user_attrs = cmds.listAttr(root, userDefined=True) or []
             for attr in user_attrs[2:]:
-                wrapper = AttrWrapper(root, attr)
+                wrapper = widgets.AttrWrapper(root, attr)
                 self.attr_wrappers.append(wrapper)
-                factory = QTWidgetFactory()
+                factory = widgets.QTWidgetFactory()
+
                 widget_fn = factory.BUILDERS.get(wrapper.type, factory.build_string)
                 new_widget = widget_fn(wrapper)
                 new_widget.setContentsMargins(0, 0, 0, 0)
@@ -727,44 +748,6 @@ class VenAutoRig(QtWidgets.QDialog):
 
             self.guide_settings_layout.addWidget(widget)
 
-
-
-
-    def add_string(self, obj, name, type, *args, **kwargs):
-        cmds.addAttr(obj, ln=name, dt="string")
-        cmds.setAttr(f"{obj}.{name}", type.get("value", ""), type="string")
-
-    def add_bool(self,obj, name, type, cb=False, key=False, *args, **kwargs):
-        cmds.addAttr(obj, ln=name, at="bool", dv=int(type.get("value", False)), k=key)
-        cmds.setAttr(f"{obj}.{name}", e=True, k=True, cb=cb)
-
-    def add_enum(self,obj, name, type, side, cb=False, key=False, *args, **kwargs):
-        self.useSide = None #self.sideCheck.isChecked()
-        value = str(type.get("value", None))
-
-        if self.useSide:
-            value = self.sideRadioGrp.checkedButton().text()
-
-        OVERRIDES = {
-            "comp_side": value,
-            }
-        opts = ":".join(type.get("options", []))
-        cmds.addAttr(obj, ln=name, at="enum", en=opts, k=key)
-
-        value = OVERRIDES.get(name, value)
-        if "value" in type:
-            idx = type["options"].index(value)
-            cmds.setAttr(f"{obj}.{name}", idx, cb=cb)
-
-    def add_float(self, obj, name, type, index, cb=False, key=False, *args, **kwargs):
-        """ Maybe will optimize the override stuff later"""
-        OVERRIDES = {
-                    "component_index": index,
-                    }
-        value = float(type.get("value", 0.0))
-        value = OVERRIDES.get(name, value)
-        cmds.addAttr(obj, ln=name, at="float", dv=value, k=key)
-        cmds.setAttr(f"{obj}.{name}", e=True, k=True, cb=cb)
 
     def _separator(self):
         """ Spawn separator based on this style """
@@ -848,96 +831,8 @@ class VenAutoRig(QtWidgets.QDialog):
             else:
                 rb.setStyleSheet("color: #555555;")  # dark grey color
 
-class QTWidgetFactory:
-    def __init__(self):
-        self.BUILDERS = {
-            "double": self.build_float,
-            "float": self.build_float,
-            "long": self.build_int,
-            "short": self.build_int,
-            "byte": self.build_int,
-            "int": self.build_int,
-            "bool": self.build_bool,
-            "enum": self.build_enum,
-            "string": self.build_string,
-        }
 
-    def build_enum(self, wrapper):
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(5, 5, 5, 5)
-        container = QtWidgets.QWidget()
-        container.setLayout(row)
-        label = QtWidgets.QLabel(f"{wrapper.attr} :")
-        row.addWidget(label)
-        dropdown = QtWidgets.QComboBox()
-        print(wrapper.node)
-        enum_names = cmds.attributeQuery(wrapper.attr, node=wrapper.node, listEnum=True)[0].split(":")
-
-        for enum in enum_names:
-            dropdown.addItem(enum)
-
-
-        dropdown.setCurrentIndex(wrapper.get()-1)
-
-        row.addWidget(dropdown)
-
-        return container
-
-    def build_float(self, wrapper):
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(5, 5, 5, 5)
-        container = QtWidgets.QWidget()
-        container.setLayout(row)
-        label = QtWidgets.QLabel(wrapper.node)
-        row.addWidget(label)
-
-        spin = QtWidgets.QDoubleSpinBox()
-        spin.setValue(wrapper.get())
-        spin.valueChanged.connect(lambda val, w=wrapper: w.set(val))
-        row.addWidget(spin)
-
-        return container
-
-    def build_int(self, wrapper):
-        spin = QtWidgets.QSpinBox()
-        spin.setValue(wrapper.get())
-        spin.valueChanged.connect(lambda val, w=wrapper: w.set(val))
-        return spin
-
-    def build_bool(self, wrapper):
-        check = QtWidgets.QCheckBox()
-        check.setChecked(wrapper.get())
-        check.stateChanged.connect(lambda state, w=wrapper: w.set(bool(state)))
-        return check
-
-    def build_string(self, wrapper):
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(5, 5, 5, 5)
-        container = QtWidgets.QWidget()
-        container.setLayout(row)
-        label = QtWidgets.QLabel(f"{wrapper.attr} :")
-        row.addWidget(label)
-
-        field = QtWidgets.QLineEdit(str(wrapper.get()))
-        field.editingFinished.connect(lambda f=field, w=wrapper: w.set(f.text()))
-        row.addWidget(field)
-        return container
-
-
-class AttrWrapper:
-    def __init__(self, node, attr):
-        self.node = node
-        self.attr = attr
-        self.full_attr = f"{node}.{attr}"
-        self.type = cmds.getAttr(self.full_attr, type=True)
-
-    def get(self):
-        return cmds.getAttr(self.full_attr)
-
-    def set(self, value):
-        try:
-            cmds.setAttr(self.full_attr, value)
-        except:
-            cmds.warning("cant")
-
-
+    def log(self, message):
+        ts = time.strftime("%H:%M:%S")
+        self.debug_box.appendPlainText(f"[{ts}] {message}")
+        pass

@@ -96,7 +96,7 @@ class NamingConfig:
 
         return NamingContext(**ctx_dict)
 
-    @classmethod
+    @classmethod #delete later
     def get_unique_name(cls, ctx, start_index: int = 0) -> str:
         """Generate and check if name unique or not, keep increment the index"""
         attempts = 0

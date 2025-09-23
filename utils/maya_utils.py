@@ -1,4 +1,18 @@
 from maya import cmds
+from functools import wraps
+
+def one_undo(func):
+    @wraps(func)
+    def wrap(*args, **kwargs):
+        try:
+            cmds.undoInfo(openChunk=True)
+            return func(*args, **kwargs)
+        except Exception as e:
+            raise e
+        finally:
+            cmds.undoInfo(closeChunk=True)
+    return wrap
+
 
 def find_root(name="root"):
     """Keep climbing till find root"""

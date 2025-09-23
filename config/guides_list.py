@@ -29,8 +29,9 @@ component_lists = {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
                             "value": "Center"
-                        },
-                    }
+                        }
+                    },
+                    "comp_index": {"widget": "int", "value": "0"},
                 }
             },
             "Limbs": {
@@ -45,8 +46,8 @@ component_lists = {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
                             "value": "Center"}
-
-                    }
+                    },
+                    "comp_index": {"widget": "int", "value": "0"},
                 },
                 "Shoulder": {
                     "position": [(4, 143, 3), (0, 0, 20)],
@@ -60,6 +61,7 @@ component_lists = {
                             "options": ["Right", "Center", "Left"],
                             "value": "Left"
                     },
+                        "comp_index": {"widget": "int", "value": "0"}
                 },
             },
                 "Arm": {
@@ -73,7 +75,9 @@ component_lists = {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
                             "value": "Left"
-                        }
+                        },
+                        "comp_index": {"widget": "int", "value": "0"},
+                        "twist": {"widget": "int", "value": "0"}
                     }
                 },
                 "Fingers": {
@@ -87,7 +91,8 @@ component_lists = {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
                             "value": "Left"
-                        }
+                        },
+                         "comp_index": {"widget": "int", "value": "0"},
                     }
                 },
                 "Leg": {
@@ -101,7 +106,9 @@ component_lists = {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
                             "value": "Left"
-                        }
+                        },
+                        "comp_index": {"widget": "int", "value": "0"},
+                        "twist": {"widget": "int", "value": "0"}
                     }
                 },
                 "Foot": {
@@ -115,8 +122,10 @@ component_lists = {
                             "widget": "enum",
                             "options": ["Right", "Center", "Left"],
                             "value": "Left"}
-                    }
+                    },
+                    "comp_index": {"widget": "int", "value": "0"},
 
                 }
             }
         }
+
