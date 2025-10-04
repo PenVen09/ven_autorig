@@ -1,9 +1,9 @@
 """AutoRig Tool
 why am i here
 to do:
-- reroute errors to debug box
+- reroute errors to debug box, filter
 - better UI D:
--Not sure if should combine fk chain with finger?(or should i make a converter?
+- Not sure if should combine fk chain with finger?(or should i make a converter?
 - each segment aim at child(mgear) similar to ik stuff
 - Custom Marking Menus
 - STreSS TeSt
@@ -15,22 +15,21 @@ to do:
 - Connect to controller script?
 - animation or game rig checkbox
 - unreal/unity based naming convention changer
+- QA checker
 """
 from typing import Tuple
-import time
 from itertools import zip_longest
 from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QWidget, QPushButton, QVBoxLayout
 import maya.api.OpenMaya as om
 from maya import cmds
 
-
 from . import widgets
 
-from ..config import naming, guides_list, shapes
+from ..config import naming, guides_list, shape_data
 from ..config.naming import GLOBAL_CONFIG
 
-from ..utils import maya_utils
+from ..core.utils import maya_utils, logger, math
 
 from ..core import attrs
 
@@ -141,6 +140,8 @@ class VenAutoRig(QtWidgets.QDialog):
 
         tab_layout.addWidget(self.component_tree_list, 1)
 
+
+
         # --------------------------------------------------
         '''
         side_layout = QtWidgets.QHBoxLayout()
@@ -161,7 +162,9 @@ class VenAutoRig(QtWidgets.QDialog):
         # --------------------------------------------------
         utilities_layout = QtWidgets.QHBoxLayout()
         duplicate_button =QtWidgets.QPushButton("Duplicate")
+        duplicate_button.clicked.connect(lambda: self.duplicate_or_symmetry(False))
         symmetry_button = QtWidgets.QPushButton("Symmetry")
+        symmetry_button.clicked.connect(lambda: self.duplicate_or_symmetry(True))
         utilities_layout.addWidget(duplicate_button)
         utilities_layout.addWidget(symmetry_button)
 
@@ -174,16 +177,27 @@ class VenAutoRig(QtWidgets.QDialog):
         component_layout.addWidget(spawn_component_button)
         component_layout.addLayout(utilities_layout)
         component_layout.addWidget(component_list_tabs)
-        component_list_tabs.addTab(component_tab_widget, "Component")
+        component_list_tabs.addTab(component_tab_widget, "Cmpnt")
+
 
         # --------------------------------------------------
         # --- Left side (templates) ---
-        '''
-        template_tab_widget = QtWidgets.QWidget()
-        template_layout = QtWidgets.QVBoxLayout(template_tab_widget)
+        self.template_tree = QtWidgets.QTreeWidget()
 
-        component_list_tabs.addTab(template_tab_widget, "Templates")
-        '''
+
+        self.template_tree.setHeaderHidden(True)
+        font = self.template_tree.font()
+        font.setPointSize(9)
+        self.template_tree.setFont(font)
+        self.template_tree.setIndentation(10)
+
+
+        self.template_tree.setHeaderLabel("Template Tree")
+        self.template_tab_widget = QtWidgets.QWidget()
+        template_layout = QtWidgets.QVBoxLayout(self.template_tab_widget)
+        template_layout.addWidget(self.template_tree)
+        component_list_tabs.addTab(self.template_tab_widget, "Tmp")
+
         # --------------------------------------------------
         # --- Right side (Guide) ---
         self.guide_layout = QtWidgets.QVBoxLayout()
@@ -225,20 +239,31 @@ class VenAutoRig(QtWidgets.QDialog):
         build_layout.addWidget(build_controller)
         content_area.addLayout(build_layout)
         self.populate_treeview(self.component_tree_list)
+        self.populate_treeview(self.template_tree)
         self.component_tree_list.expandAll()
-
+        self.template_tree.expandAll()
         return w
 
     def build_debug_box(self):
         w = QtWidgets.QGroupBox("Debug")
         w.setMinimumSize(500,130)
         l = QtWidgets.QVBoxLayout(w)
-        self.debug_box = QtWidgets.QPlainTextEdit()
-        self.debug_box.setReadOnly(True)
-        self.debug_box.setFixedHeight(100)
-        #self.debug_box.appendPlainText(__doc__)
-        #QtCore.QTimer.singleShot(0, lambda: self.debug_box.verticalScrollBar().setValue(0))
 
+
+
+
+        self.debug_box = QtWidgets.QTableWidget()
+        self.debug_box.setColumnCount(3)
+        self.debug_box.verticalHeader().setVisible(False)
+        self.debug_box.horizontalHeader().setVisible(False)
+        self.debug_box.horizontalHeader().setStretchLastSection(True)
+        self.debug_box.verticalHeader().setVisible(False)
+        self.debug_box.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.debug_box.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+
+        self.debug_box.setRowHeight(0, 30)
+        self.debug_box.setRowHeight(1, 10)
+        logger.attach_table(self.debug_box)
         l.addWidget(self.debug_box)
         return w
 
@@ -251,42 +276,134 @@ class VenAutoRig(QtWidgets.QDialog):
 
     def populate_treeview(self, tree_widget):
         self.component_widgets = {}
-
-        for parent, children in guides_list.component_lists.items():
+        list = guides_list.component_lists
+        if tree_widget == self.template_tree:
+            list = guides_list.Templates
+        for parent, children in list.items():
             tree_item = QtWidgets.QTreeWidgetItem(tree_widget,[parent])
             tree_item.setIcon(0, QtGui.QIcon(":folder-closed.png"))
-
             for child, info in children.items():
                 QtWidgets.QTreeWidgetItem(tree_item, [child])
 
-    def spawn_section_window(self):
+    def spawn_section_window(self, guide_length, position_offset, rotation_offset):
         dialog = QtWidgets.QDialog()
-        dialog.setWindowTitle("Manage Section")
-        dialog.resize(400, 300)
+        dialog.setWindowTitle("Guide Properties")
+        dialog.resize(100, 100)
         main_layout = QtWidgets.QVBoxLayout(dialog)
 
 
+        sub_layout = QtWidgets.QHBoxLayout()
+        sub_label = QtWidgets.QLabel("Subdividsion: ")
+        sub_spin = QtWidgets.QSpinBox()
+
+        sub_spin.setValue(guide_length)
+
+        sub_layout.addWidget(sub_label)
+        sub_layout.addWidget(sub_spin)
+        main_layout.addLayout(sub_layout)
+
+
+        rotate_layout = QtWidgets.QHBoxLayout()
+        rotate_label = QtWidgets.QLabel("Rotate Offset: ")
+        rotate_spin = QtWidgets.QDoubleSpinBox()
+        rotate_spin.setValue(rotation_offset[1][0])#placeholder
+        rotate_layout.addWidget(rotate_label)
+        rotate_layout.addWidget(rotate_spin)
+        main_layout.addLayout(rotate_layout)
+
+        spacing_layout = QtWidgets.QHBoxLayout()
+        spacing_label = QtWidgets.QLabel("Spacing: ")
+        spacing_spin = QtWidgets.QDoubleSpinBox()
+
+        spacing_spin.setValue(position_offset[1][0])#placeholder
+
+        spacing_layout.addWidget(spacing_label)
+        spacing_layout.addWidget(spacing_spin)
+        main_layout.addLayout(spacing_layout)
+
+        button_layout = QtWidgets.QHBoxLayout()
         accept_btn = QtWidgets.QPushButton("Accept")
+        accept_btn.clicked.connect(dialog.accept)
         cancel_btn =QtWidgets.QPushButton("Cancel")
-        main_layout.addWidget(accept_btn)
-        main_layout.addWidget(cancel_btn)
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(accept_btn)
+        button_layout.addWidget(cancel_btn)
+
+        main_layout.addLayout(button_layout)
 
         result = dialog.exec_()
-        pass
 
+
+        if result == QtWidgets.QDialog.Accepted:
+            position = []
+            rotation = []
+            axis = self.axis_to_vector("z+")
+            position.append(position_offset[0])
+            rotation.append(rotation_offset[0])
+
+
+            for i in range(sub_spin.value() - 1):
+                x = axis[0] * spacing_spin.value()
+                y = axis[1] * spacing_spin.value()
+                z = axis[2] * spacing_spin.value()
+                position.append((x,y,z))
+                rotation.append((0,0,0)) #later fix
+            return position, rotation
+        else:
+            return False
+
+    def duplicate_or_symmetry(self, symmetry=False):
+        selected = cmds.ls(selection=True)
+
+        for selection in selected:
+            root = maya_utils.find_root(selection)
+            side = cmds.getAttr(f"{root}.comp_side")
+            if side != "Center":
+
+                duplicated = cmds.duplicate(root, returnRootsOnly=True, ic=True, un=True)[0]
+
+                #Mirror root
+                if symmetry == True:
+                    side_index = 0 if ctx.side == "Left" else 2
+                    cmds.setAttr(f"{duplicated}.comp_side", side_index)
+                    parent = cmds.listRelatives(root, parent=True)
+                    mirror_group = cmds.group(empty=True, name="TMP_MIRROR", world=True)
+                    cmds.parent(duplicated, mirror_group)
+                    cmds.scale(-1,1,1, mirror_group)
+                    cmds.parent(duplicated, parent)
+                    cmds.delete(mirror_group)
+
+                orig_hierarchy = cmds.ls(root, dag=True, type="transform", long=True) or []
+                dup_hierarchy  = cmds.ls(duplicated, dag=True, type="transform", long=True) or []
+
+                for orig, dup in zip(reversed(orig_hierarchy), reversed(dup_hierarchy)):
+                    base_name = orig.split('|')[-1]
+                    ctx = GLOBAL_CONFIG.from_string(base_name)
+                    if symmetry == True:
+                        ctx.side = "L" if ctx.side == "R" else "R"
+                    new_name = GLOBAL_CONFIG.get_unique_name(ctx)
+                    cmds.rename(dup, new_name)
 
     @maya_utils.one_undo
+    @maya_utils.timer
     def spawn_guides(self):
         tree_selection = self.component_tree_list.currentItem()
+        """
+        if self.component_tree_list.hasFocus():
+            tree_selection = self.component_tree_list.currentItem()
+            list = [tree_selection.text(0)]
+        elif self.template_tree.hasFocus():
+            tree_selection = self.template_tree.currentItem()
+            list = [entry["name"] for entry in guides_list.Templates["Templates"][tree_selection.text(0)]]
+        """
+
         selection = cmds.ls(selection=True)
+
         if tree_selection:
             selected = tree_selection.text(0)
-            add_section_list = ["Fingers", "Spine", "FKIKChain"]
-            if selected in add_section_list:
-                self.spawn_length_window()
-                pass
-
             self.useSide = None#self.sideCheck.isChecked()
+
+
             side = guides_list.component_lists[tree_selection.parent().text(0)][selected]["attrs"]["comp_side"]["value"]
             if self.useSide:
                 side = self.sideRadioGrp.checkedButton().text()
@@ -300,6 +417,16 @@ class VenAutoRig(QtWidgets.QDialog):
             ctx = naming.NamingContext(base, side, "guide", suffix[0])
 
             guide_length = len(position)
+            add_section_list = ["Fingers", "Spine", "FKIKChain"]
+
+
+            if selected in add_section_list:
+                win = self.spawn_section_window(guide_length, position, rotation)
+                if win == False:
+                    return
+                position = win[0]
+                rotation = win[1]
+
 
             if guide_length > 1:
                 ctx.suffix = "crv"
@@ -312,11 +439,14 @@ class VenAutoRig(QtWidgets.QDialog):
                 ep_curve = None
             nodes = []
 
-            for ctx.index, (pos, rot, suffix) in enumerate(zip_longest(position, rotation, suffix, fillvalue=suffix[-1])):
+            i = 0
+            for i, (pos, rot, suffix) in enumerate(zip_longest(position, rotation, suffix, fillvalue=suffix[-1])):
                 """ Might need to fix how the enumerate/index work for controlPoints(if index is changeable by user)"""
                 ctx.suffix = suffix
+                if selected in add_section_list:
+                    ctx.index = i
                 full_name = GLOBAL_CONFIG.get_unique_name(ctx)
-                if ctx.index == 0:
+                if i == 0:
                     parent_node = self.create_guide_controller(True, full_name, None, pos, rot)
                     parent_shape = cmds.listRelatives(parent_node, shapes=True, fullPath=True)[0]
                     cmds.setAttr(f"{parent_shape}.visibility", 0)
@@ -324,7 +454,11 @@ class VenAutoRig(QtWidgets.QDialog):
                     ctx.suffix = "root"
                     full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                     root_node = self.create_guide_controller(False, full_name, None, pos, rot, r=0.8)
-
+                    """
+                    if ctx.side == "Right":
+                        cmds.scale(1,1,-1, root_node)
+                        pass
+                    """
 
                     cmds.parent(parent_node, root_node)
                     nodes.append(parent_node)
@@ -358,16 +492,19 @@ class VenAutoRig(QtWidgets.QDialog):
                             cmds.parent(root_node, selection[0])
 
                         else:
-                            cmds.warning("Parent is not autorig guide")
+                            logger.log("Parent is not autorig guide", "Warning")
+                            return #eh? or pass
 
                     if ep_curve:
-                        ep_offset = cmds.group(ep_curve, parent=parent_node, n=f"{ep_curve}_offset",r=True)
+                        ctx.suffix = "crvOffset"
+                        full_name = GLOBAL_CONFIG.get_unique_name(ctx)
+                        ep_offset = cmds.group(ep_curve, parent=parent_node, n=f"{full_name}",r=True)
                         cmds.connectAttr(f"{parent_node}.worldInverseMatrix", f"{ep_offset}.offsetParentMatrix")
 
                         #Probably will make this below as method soon
                         world_space = cmds.createNode("decomposeMatrix", name=f"{parent_node}" + "_ws")
                         cmds.connectAttr(f"{parent_node}.worldMatrix[0]", f"{world_space}.inputMatrix", f=True)
-                        cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{ctx.index}]")
+                        cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{i}]")
 
 
                 else:
@@ -380,7 +517,7 @@ class VenAutoRig(QtWidgets.QDialog):
                     #Probably will make this below as method soon
                     world_space = cmds.createNode("decomposeMatrix", name=f"{child_node}" + "_ws")
                     cmds.connectAttr(f"{child_node}.worldMatrix[0]", f"{world_space}.inputMatrix", f=True)
-                    cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{ctx.index}]")
+                    cmds.connectAttr(f"{world_space}.outputTranslate", f"{ep_shape}.controlPoints[{i}]")
 
                     parent_node = child_node
 
@@ -408,22 +545,21 @@ class VenAutoRig(QtWidgets.QDialog):
                 base_name = naming.NamingContext.build(parts, new_order=naming.NAMING_PREFS["node_order"])
 
                 # --- Spawn pole vector arrow ---
-                ctx.index = 0 #revisit later
                 ctx.suffix = "angle"
                 full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                 angle_controller = cmds.curve(
                     d=1,
-                    p=shapes.shapes_lists["one_arrow"],
+                    p=shape_data.shapes_lists["one_arrow"],
                     n=full_name
                 )
                 cmds.matchTransform(angle_controller, root_node)
                 cmds.parent(angle_controller, root)
                 cmds.rotate(90,0,0, angle_controller)
-                ctx.suffix = "pv_dir"
+                ctx.suffix = "pvDir"
                 full_name = GLOBAL_CONFIG.get_unique_name(ctx)
                 pv_controller = cmds.curve(
                     d=1,
-                    p=shapes.shapes_lists["one_arrow"],
+                    p=shape_data.shapes_lists["one_arrow"],
                     n=full_name
                 )
                 cmds.addAttr(pv_controller, longName="elbowRatio", attributeType="float", defaultValue=0.5, keyable=True)
@@ -432,9 +568,12 @@ class VenAutoRig(QtWidgets.QDialog):
                 # --- Root aim at Elbow --- ##NEED TO DO SMTH SO CAN EASILY CHANGE AXIS
                 cmds.aimConstraint(wrist, root, aimVector=primary_vec, upVector=self.axis_to_vector("y+"), worldUpType="object", worldUpObject=elbow)
                 cmds.aimConstraint(wrist, elbow, aimVector=primary_vec, upVector=self.axis_to_vector("y+"), worldUpType="objectrotation", worldUpObject=wrist)
-                
+
                 # --- Elbow between two points ---
-                elbow_offset = cmds.group(empty=True, p=root_node, n=f"{elbow}_offset")
+                ctx = GLOBAL_CONFIG.from_string(elbow)
+                ctx.suffix = "elbowOffset"
+                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
+                elbow_offset = cmds.group(empty=True, p=root_node, n=full_name)
                 cmds.parent(elbow, elbow_offset, a=True)
 
                 bc = cmds.createNode("blendColors", name=f"BC_{base_name}")
@@ -504,7 +643,7 @@ class VenAutoRig(QtWidgets.QDialog):
                     "out":(4.555, -8.734, 9.097),
                     "in":(-3.643, -8.734, 9.097)
                     }
-                ctx.index = 0
+
                 for name, pos in foot_list.items():
                     ctx.suffix = f"{name}crv"
                     full_name = GLOBAL_CONFIG.get_unique_name(ctx)
@@ -529,10 +668,10 @@ class VenAutoRig(QtWidgets.QDialog):
                     cmds.connectAttr(f"{new_node}.worldMatrix[0]", f"{new_space}.inputMatrix", f=True)
                     cmds.connectAttr(f"{new_space}.outputTranslate", f"{ep_shape}.controlPoints[1]")
             cmds.select(clear=True)
-
-            self.log("Spawned Guides")
+            logger.log(f"Spawned {base}Guide", "INFO")
 
     @maya_utils.one_undo
+    @maya_utils.timer
     def spawn_joint(self, all=False):
         if all:
             all_descendants = cmds.listRelatives("guide", ad=True, type="transform", fullPath=True)#need to not harcode
@@ -609,7 +748,6 @@ class VenAutoRig(QtWidgets.QDialog):
         for guide in guides:
             pos = cmds.xform(guide, q=True, ws=True, t=True)
             base_guide = guide.split("|")[-1]
-
             ctx = GLOBAL_CONFIG.from_string(base_guide)
             ctx.stage = "joint"
             joint_name = naming.NamingContext.build(ctx)
@@ -621,11 +759,15 @@ class VenAutoRig(QtWidgets.QDialog):
             if not cmds.objExists(up_name):
                 up_name = root_guide
 
+            primary_vec = naming.AXIS_PREFS["primary"]
+            secondary_vec = naming.AXIS_PREFS["secondary"]
+            if ctx.side == "R":
+                primary_vec = self.flip_axis(primary_vec)
+                secondary_vec = self.flip_axis(secondary_vec)
             if parent:
                 try:
                     if cmds.objectType(parent) == "joint":
-
-                        aim = cmds.aimConstraint(jnt, parent, aimVector=self.axis_to_vector("x+"), upVector=self.axis_to_vector("z+"), worldUpType="objectrotation", worldUpObject=up_name)
+                        aim = cmds.aimConstraint(jnt, parent, aimVector=self.axis_to_vector(primary_vec), upVector=self.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
                         cmds.delete(aim)
                         cmds.makeIdentity(parent, apply=True, rotate=True, translate=False, scale=False)
 
@@ -651,9 +793,9 @@ class VenAutoRig(QtWidgets.QDialog):
                     ctx = GLOBAL_CONFIG.from_string(base_guide)
                     ctx.stage = "joint"
                     temp = naming.NamingContext.build(ctx)
-                    primary_axis = naming.AXIS_PREFS["primary"]
                     if cmds.objExists(temp):
-                        aim = cmds.aimConstraint(jnt, temp, aimVector=self.axis_to_vector(primary_axis), upVector=self.axis_to_vector("z+"), worldUpType="objectrotation", worldUpObject=up_name)
+
+                        aim = cmds.aimConstraint(jnt, temp, aimVector=self.axis_to_vector(primary_vec), upVector=self.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
                         cmds.delete(aim)
                         cmds.parent(jnt, temp)
                         break
@@ -712,15 +854,6 @@ class VenAutoRig(QtWidgets.QDialog):
             return cmds.rename(shapes[0], new_name)
         return None
 
-    def axis_to_vector(self, axis):
-        if axis == "x+": return (1,0,0)
-        if axis == "x-": return (-1,0,0)
-        if axis == "y+": return (0,1,0)
-        if axis == "y-": return (0,-1,0)
-        if axis == "z+": return (0,0,1)
-        if axis == "z-": return (0,0,-1)
-        raise ValueError("Invalid axis: " + axis)
-
     def _populate_module(self):
         self._clear_layout(self.guide_settings_layout)
 
@@ -748,7 +881,6 @@ class VenAutoRig(QtWidgets.QDialog):
 
             self.guide_settings_layout.addWidget(widget)
 
-
     def _separator(self):
         """ Spawn separator based on this style """
         line = QtWidgets.QFrame()
@@ -756,10 +888,6 @@ class VenAutoRig(QtWidgets.QDialog):
         line.setFrameShadow(QtWidgets.QFrame.Sunken)
         line.setStyleSheet("margin-top: 5px; margin-bottom: 5px;")
         return line
-
-    def _chain_length_popup(self):
-        """idk window with spinbox, direction, spacing"""
-        pass
 
     def _collapsible_button(self, label_text, isVisible=True) -> Tuple[QWidget, QPushButton, QVBoxLayout]:
         """ Spawn a collapsible button widget, return some widget that can be parented under other layout """
@@ -831,8 +959,3 @@ class VenAutoRig(QtWidgets.QDialog):
             else:
                 rb.setStyleSheet("color: #555555;")  # dark grey color
 
-
-    def log(self, message):
-        ts = time.strftime("%H:%M:%S")
-        self.debug_box.appendPlainText(f"[{ts}] {message}")
-        pass

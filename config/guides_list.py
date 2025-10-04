@@ -35,9 +35,9 @@ component_lists = {
                 }
             },
             "Limbs": {
-                "Spine":{
-                    "position": [(0,0,0)],
-                    "rotation": [(0,0,0)],
+                "Spine": {
+                    "position": [(0, 85, 0), (15, 0, 0), (15, 0, 0), (15, 0, 0)],
+                    "rotation": [(-90, 0, 0), (0, 0, 0), (0, 0,0), (0, 0, 0)],
                     "suffix":["spine"],
                     "attrs":{
                         "rigType": {"widget": "string", "value": "spine"},
@@ -53,6 +53,7 @@ component_lists = {
                     "position": [(4, 143, 3), (0, 0, 20)],
                     "rotation": [(0, 102, 0), (0, 0, 0)],
                     "suffix": ["shoulder", "tip"],
+                    "children": [],
                     "attrs": {
                         "rigType": {"widget": "string", "value": "shoulder"},
                         "comp_name": {"widget": "string", "value": "Shoulder"},
@@ -129,3 +130,14 @@ component_lists = {
             }
         }
 
+Templates = {
+    "Templates":{
+        "Biped": [
+            {"name": "Spines", "parent": None},
+            {"name": "Arm", "parent": "Spine"},
+            {"name": "Arm", "parent": "Spine"},
+            {"name": "Leg", "parent": "Spine"},
+            {"name": "Leg", "parent": "Spine"}
+        ]
+    }
+}

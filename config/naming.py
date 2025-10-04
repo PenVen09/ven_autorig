@@ -1,13 +1,14 @@
 from dataclasses import dataclass
+from typing import Optional
 from maya import cmds
 import re
 
 NAMING_PREFS = {
-    "order": ["base", ("side", "subindex"), "index", "suffix", "stage"],
+    "order": ["stage", "base", ("side", "subindex"), "index", "suffix", "extra"],
     "node_order":["base", "index", "suffix" ],
     "separator": "_",
     "prefixes": {
-        "guide": "g",
+        "guide": "gd",
         "joint": "jnt",
         "final": "rig",
         "temp": "tmp"
@@ -28,14 +29,16 @@ class NamingContext:
     side: str = ""
     stage: str = ""
     suffix: str = ""
-    index: int = 0
+    index: Optional[int] = None
     subindex: int = 0
+    extra: Optional[str] = ""
 
 
     @classmethod
     def build(cls, ctx, new_order=None):
         if new_order is None:
             new_order = NamingConfig.order
+
 
         parts = []
 
@@ -56,9 +59,12 @@ class NamingContext:
                 value = getattr(ctx, key, "")
                 if key == "stage":
                     value = NamingConfig.prefixes.get(value, value)
+
+                if value == None:
+                    continue
                 parts.append(str(value))
 
-
+        parts = [p for p in parts if p]#remove whitespace(index)
         full_name = NamingConfig.separator.join(parts)
         return full_name
 
@@ -78,6 +84,17 @@ class NamingConfig:
             old_order = cls.order
 
         parts = name.split(cls.separator)
+        has_index = False
+        for p in parts:
+            if p.isdigit():
+                has_index = True
+                break
+
+        order = list(cls.order)
+
+        if not has_index and "index" in order:
+            old_order = [x for x in cls.order if x != "index"]
+
 
         ctx_dict = {}
         for key, val in zip(old_order, parts):
@@ -93,7 +110,6 @@ class NamingConfig:
                     ctx_dict[key[1]] = "0"
             else:
                 ctx_dict[key] = val
-
         return NamingContext(**ctx_dict)
 
     @classmethod #delete later

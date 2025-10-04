@@ -6,7 +6,6 @@ import importlib, sys
 from .ui.main_ui import VenAutoRig
 
 def get_maya_window():
-    """ Return Maya main window as QMainWindow."""
     main_window_ptr = omui.MQtUtil.mainWindow()
     return wrapInstance(int(main_window_ptr), QtWidgets.QMainWindow)
 
@@ -21,8 +20,7 @@ def show_ui():
     win.show()
 
 def reload_and_launch():
-    """Reload the whole package and relaunch the UI."""
-    import ven_autorig  # your package name here
+    import ven_autorig
     recursive_reload(ven_autorig)
     return show_ui()
 
