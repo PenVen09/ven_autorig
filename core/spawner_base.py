@@ -1,10 +1,8 @@
-from .utils import logger
-
-
+from .utils.maya_utils import one_undo, timer
 class SpawnerBase:
-    def __init__(self, name="Unnamed"):
+    def __init__(self, name="Unnamed", logger=None):
         self.name = name
-        self.log = logger.log
+        self.logger = logger
 
     def precheck(self) -> bool:
         return True
@@ -13,9 +11,11 @@ class SpawnerBase:
         raise NotImplementedError("Spawner must implement spawn()")
 
     def finalize(self) -> None:
-        self.log(f"{self.name} spawn finished", "INFO")
+        self.logger.log(f"{self.name} spawn finished", "INFO")
 
-    def execute(self) -> None:
+
+
+    def execute(self, *args, **kwargs):
         if not self.precheck():
             self.log(f"{self.name} precheck failed!", "ERROR")
             return

@@ -15,14 +15,19 @@ def one_undo(func):
     return wrap
 
 def timer(func):
-        @wraps(func)
-        def wrap(*args, **kwargs):
-            self = args[0]
-            start_time = time.time()
-            func(*args, **kwargs)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-        return wrap
+    @wraps(func)
+    def wrap(*args, **kwargs):
+        self = args[0]
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        print(result)
+        if result is False:
+            return result
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        self.logger.log(f"{self.name} spawned in {elapsed_time:.3f} seconds")
+        return result
+    return wrap
 
 def find_root(selection=None, name="root"):
     """Keep climbing till find root"""
@@ -62,3 +67,8 @@ def find_guide(attr, name = "isVenGuide"):
         nodes = cmds.listConnections(node, s=True, d=False) or []
 
     return None
+
+def has_attr(node, name = "isVenGuide"):
+    if not cmds.objExists(node):
+        return False
+    return cmds.attributeQuery(name, node=node, exists=True)

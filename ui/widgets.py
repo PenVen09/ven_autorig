@@ -3,6 +3,8 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QWidget, QPushButton, QVBoxLayout
 from maya import cmds
 
+from ..core.utils import math
+
 class QTWidgetFactory:
     def __init__(self):
         self.BUILDERS = {
@@ -87,7 +89,6 @@ class QTWidgetFactory:
         row.addWidget(field)
         return container
 
-
 class AttrWrapper:
     def __init__(self, node, attr):
         self.node = node
@@ -105,3 +106,70 @@ class AttrWrapper:
             cmds.warning("cant")
 
 
+
+def spawn_section_window(guide_length, position_offset, rotation_offset):
+    dialog = QtWidgets.QDialog()
+    dialog.setWindowTitle("Guide Properties")
+    dialog.resize(100, 100)
+    main_layout = QtWidgets.QVBoxLayout(dialog)
+
+
+    sub_layout = QtWidgets.QHBoxLayout()
+    sub_label = QtWidgets.QLabel("Subdividsion: ")
+    sub_spin = QtWidgets.QSpinBox()
+
+    sub_spin.setValue(guide_length)
+
+    sub_layout.addWidget(sub_label)
+    sub_layout.addWidget(sub_spin)
+    main_layout.addLayout(sub_layout)
+
+
+    rotate_layout = QtWidgets.QHBoxLayout()
+    rotate_label = QtWidgets.QLabel("Rotate Offset: ")
+    rotate_spin = QtWidgets.QDoubleSpinBox()
+    rotate_spin.setValue(rotation_offset[1][0])#placeholder
+    rotate_layout.addWidget(rotate_label)
+    rotate_layout.addWidget(rotate_spin)
+    main_layout.addLayout(rotate_layout)
+
+    spacing_layout = QtWidgets.QHBoxLayout()
+    spacing_label = QtWidgets.QLabel("Spacing: ")
+    spacing_spin = QtWidgets.QDoubleSpinBox()
+
+    spacing_spin.setValue(position_offset[1][0])#placeholder
+
+    spacing_layout.addWidget(spacing_label)
+    spacing_layout.addWidget(spacing_spin)
+    main_layout.addLayout(spacing_layout)
+
+    button_layout = QtWidgets.QHBoxLayout()
+    accept_btn = QtWidgets.QPushButton("Accept")
+    accept_btn.clicked.connect(dialog.accept)
+    cancel_btn =QtWidgets.QPushButton("Cancel")
+    cancel_btn.clicked.connect(dialog.reject)
+    button_layout.addWidget(accept_btn)
+    button_layout.addWidget(cancel_btn)
+
+    main_layout.addLayout(button_layout)
+
+    result = dialog.exec_()
+
+
+    if result == QtWidgets.QDialog.Accepted:
+        position = []
+        rotation = []
+        axis = math.axis_to_vector("z+")
+        position.append(position_offset[0])
+        rotation.append(rotation_offset[0])
+
+
+        for i in range(sub_spin.value() - 1):
+            x = axis[0] * spacing_spin.value()
+            y = axis[1] * spacing_spin.value()
+            z = axis[2] * spacing_spin.value()
+            position.append((x,y,z))
+            rotation.append((0,0,0)) #later fix
+        return position, rotation
+    else:
+        return False
