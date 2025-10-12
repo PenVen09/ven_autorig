@@ -4,14 +4,15 @@ from maya import cmds
 import re
 
 NAMING_PREFS = {
-    "order": ["stage", "base", ("side", "subindex"), "index", "suffix", "extra"],
+    "order": ["base", ("side", "subindex"), "index", "suffix", "stage", "extra"],
     "node_order":["base", "index", "suffix" ],
     "separator": "_",
     "prefixes": {
         "guide": "gd",
-        "joint": "jnt",
+        "joint": "bnjnt",
         "final": "rig",
-        "temp": "tmp"
+        "temp": "tmp",
+        "controller": "ctrl"
     },
     "side": {"Left": "L", "Right": "R", "Center": "C"}
 }
@@ -123,12 +124,17 @@ class NamingConfig:
 
         if start_index is not None:
             ctx.subindex = start_index
+
+
         while cmds.objExists(ctx.build(ctx)):
             ctx.subindex += 1
             attempts += 1
             if attempts >= max_attempts:
                 raise RuntimeError(f"Could not find unique name after {max_attempts} attempts")
         return ctx.build(ctx)
+
+    def get_name(cls, ctx) -> str:
+        pass
 
 
 

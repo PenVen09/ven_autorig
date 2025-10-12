@@ -1,6 +1,7 @@
 """AutoRig Tool
 why am i here
 to do:
+-Fix Aim
 - reroute errors to debug box, filter
 - better UI D:
 - Not sure if should combine fk chain with finger?(or should i make a converter?
@@ -29,7 +30,7 @@ from ..config.naming import GLOBAL_CONFIG
 
 from ..core.utils import maya_utils, logger
 
-from ..modules import spawner_guide, spawner_joint
+from ..modules import spawner_guide, spawner_joint, spawner_controller
 
 
 comments = "This is version 1.0"
@@ -53,6 +54,7 @@ class VenAutoRig(QtWidgets.QDialog):
         self.logger.attach_table(self.debug_box)
         self.spawn_guides = spawner_guide.SpawnerGuide(logger = self.logger)
         self.spawn_joints = spawner_joint.SpawnerJoint(logger = self.logger)
+        self.spawn_controllers = spawner_controller.SpawnerController(logger = self.logger)
         self.setup_connections()
 
     def initialize_ui(self):
@@ -73,9 +75,11 @@ class VenAutoRig(QtWidgets.QDialog):
 
     def setup_connections(self):
         self.spawn_component_button.clicked.connect(self.on_spawn_clicked)
+        self.build_selected.clicked.connect(lambda: self.spawn_guides.show_guide())
         self.duplicate_button.clicked.connect(lambda : self.spawn_guides.duplicate_guides(symmetry=False))
         self.symmetry_button.clicked.connect(lambda : self.spawn_guides.duplicate_guides(symmetry=True))
         self.build_joint.clicked.connect(lambda: self.spawn_joints.execute(all=True))
+        self.build_controller.clicked.connect(lambda: self.spawn_controllers.execute(all=True))
 
     def on_spawn_clicked(self):
         tree_selection = self.component_tree_list.currentItem()
@@ -245,15 +249,15 @@ class VenAutoRig(QtWidgets.QDialog):
         #------ build button-----
         build_layout = QtWidgets.QHBoxLayout()
         #build_guide = QtWidgets.QPushButton("Update guide")
-        build_selected = QtWidgets.QPushButton("Guides")
+        self.build_selected = QtWidgets.QPushButton("Guides")
         #build_selected.clicked.connect(lambda: spawner_joint.execute(all=False))
         self.build_joint = QtWidgets.QPushButton("Joints")
         #build_joint.clicked.connect(lambda: SpawnerJoint.execute(all=False))
-        build_controller = QtWidgets.QPushButton("Controller")
+        self.build_controller = QtWidgets.QPushButton("Controller")
 
-        build_layout.addWidget(build_selected)
+        build_layout.addWidget(self.build_selected)
         build_layout.addWidget(self.build_joint)
-        build_layout.addWidget(build_controller)
+        build_layout.addWidget(self.build_controller)
         content_area.addLayout(build_layout)
         self.populate_treeview(self.component_tree_list)
         self.populate_treeview(self.template_tree)
@@ -299,139 +303,6 @@ class VenAutoRig(QtWidgets.QDialog):
             tree_item.setIcon(0, QtGui.QIcon(":folder-closed.png"))
             for child, info in children.items():
                 QtWidgets.QTreeWidgetItem(tree_item, [child])
-
-    def spawn_joint(self, all=False):
-        if all:
-            all_descendants = cmds.listRelatives("guide", ad=True, type="transform", fullPath=True)#need to not harcode
-            all_descendants.reverse()
-            guides = [
-                #so short that my brain confused, need to write proper one later
-                g for g in all_descendants
-                if "_root" in cmds.ls(g, sn=True)[0].lower()
-                and cmds.attributeQuery("isVenGuide", node=g, exists=True)
-            ]
-        else:
-            cmds.warning("Still in construction")
-            #guides = cmds.ls(selection=True, type="transform", long=True)
-
-        map = {}
-
-        if guides:
-            parents = cmds.listRelatives(guides[0], allParents=True) or []
-            guide_name = parents[-1] if parents else None
-
-            main_group = cmds.group(empty=True, world=True, n="rig") #Need to connect the name to guide later, need to check if exist
-            system_group = cmds.group(parent=main_group, empty=True, n="Do_Not_Touch")
-            skeleton_group = cmds.group(parent=system_group, empty=True, n="skeletons")
-            cmds.group(parent=system_group, empty=True, n="geometry")
-            cmds.group(parent=system_group, empty=True, n="rig_systems")
-            cmds.group(parent=main_group, empty=True, n="controls")
-
-            for guide in guides:
-                self.build_joints_from_guides(False, guide, skeleton_group)
-
-            cmds.setAttr(f"{guide_name}.visibility", 0)
-
-    def build_joints_from_guides(self, hierarchy=False, root_guide=None, parent=None):
-        """
-        Build joint based on guides that contain "isVenGuide"
-        """
-
-        visited = set()
-        joints = {}
-        if root_guide in visited:
-            return
-        visited.add(root_guide)
-
-        if not cmds.attributeQuery("isVenGuide", node=root_guide, exists=True):
-            return
-
-        guide_list = []
-        # --- CASE 1: follow EP Curve for hierarchy ---
-        if hierarchy == False:
-            parts = root_guide.split("|")
-            curve_name = parts[-1].replace("root", "crv")
-            up_name = parts[-1].replace("root", "angle")
-            if cmds.objExists(curve_name):
-                curve_shape = cmds.listRelatives(curve_name, s=True, fullPath=True)[0] or []
-                num_cvs = cmds.getAttr(curve_shape + ".controlPoints", size=True)
-
-                for i in range(num_cvs):
-                    attr = f"{curve_shape}.controlPoints[{i}]"
-                    guide = maya_utils.find_guide(attr)
-                    guide_list.append(guide)
-
-
-            else:
-                cmds.warning(f"No curve found for {root_guide}")
-                return
-
-        type = cmds.getAttr(f"{root_guide}.rigType")
-        guides = guide_list
-        if type == "shoulder" or type ==  "finger":
-            guides = guide_list[:-1]
-        elif type == "foot" :
-            guides = guide_list[1:]
-
-        for guide in guides:
-            pos = cmds.xform(guide, q=True, ws=True, t=True)
-            base_guide = guide.split("|")[-1]
-            ctx = GLOBAL_CONFIG.from_string(base_guide)
-            ctx.stage = "joint"
-            joint_name = naming.NamingContext.build(ctx)
-
-            jnt = cmds.createNode("joint", name=joint_name)
-
-            cmds.xform(jnt, ws=True, t=pos)
-
-            if not cmds.objExists(up_name):
-                up_name = root_guide
-
-            primary_vec = naming.AXIS_PREFS["primary"]
-            secondary_vec = naming.AXIS_PREFS["secondary"]
-            if ctx.side == "R":
-                primary_vec = self.flip_axis(primary_vec)
-                secondary_vec = self.flip_axis(secondary_vec)
-            if parent:
-                try:
-                    if cmds.objectType(parent) == "joint":
-                        aim = cmds.aimConstraint(jnt, parent, aimVector=self.axis_to_vector(primary_vec), upVector=self.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
-                        cmds.delete(aim)
-                        cmds.makeIdentity(parent, apply=True, rotate=True, translate=False, scale=False)
-
-
-                    cmds.parent(jnt, parent)
-                    if guide == guide_list[-1]:
-                            cmds.setAttr(jnt + ".jointOrientX", 0)
-                            cmds.setAttr(jnt + ".jointOrientY", 0)
-                            cmds.setAttr(jnt + ".jointOrientZ", 0)
-                    parent = jnt
-
-                except RuntimeError:
-                    cmds.warning(f"{jnt} is already parented under {parent}, skipping...")
-
-            if guide == guides[0]:#clean naming later
-                parenta = cmds.listRelatives(root_guide, parent=True)
-                while parenta:
-                    guide_parent = parenta[0]
-                    if guide_parent == "guide":
-                        break
-                    # Convert guide name → joint name (e.g. hips_g → hips_jnt)
-                    base_guide = guide_parent.split("|")[-1]
-                    ctx = GLOBAL_CONFIG.from_string(base_guide)
-                    ctx.stage = "joint"
-                    temp = naming.NamingContext.build(ctx)
-                    if cmds.objExists(temp):
-
-                        aim = cmds.aimConstraint(jnt, temp, aimVector=self.axis_to_vector(primary_vec), upVector=self.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
-                        cmds.delete(aim)
-                        cmds.parent(jnt, temp)
-                        break
-                    # keep climbing up
-                    parenta = cmds.listRelatives(guide_parent, parent=True)
-
-
-
 
     def _populate_module(self):
         self._clear_layout(self.guide_settings_layout)
@@ -538,16 +409,3 @@ class VenAutoRig(QtWidgets.QDialog):
             else:
                 rb.setStyleSheet("color: #555555;")  # dark grey color
 
-    def axis_to_vector(self, axis):
-        if axis == "x+": return (1,0,0)
-        if axis == "x-": return (-1,0,0)
-        if axis == "y+": return (0,1,0)
-        if axis == "y-": return (0,-1,0)
-        if axis == "z+": return (0,0,1)
-        if axis == "z-": return (0,0,-1)
-
-    def flip_axis(self, axis):
-        AXIS_FLIP = {"x+": "x-", "x-": "x+",
-                    "y+": "y-", "y-": "y+",
-                    "z+": "z-", "z-": "z+"}
-        return AXIS_FLIP.get(axis, axis)

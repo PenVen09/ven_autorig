@@ -20,7 +20,6 @@ def timer(func):
         self = args[0]
         start_time = time.time()
         result = func(*args, **kwargs)
-        print(result)
         if result is False:
             return result
         end_time = time.time()

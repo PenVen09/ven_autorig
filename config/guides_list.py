@@ -37,7 +37,7 @@ component_lists = {
             "Limbs": {
                 "Spine": {
                     "position": [(0, 85, 0), (15, 0, 0), (15, 0, 0), (15, 0, 0)],
-                    "rotation": [(-90, 0, 0), (0, 0, 0), (0, 0,0), (0, 0, 0)],
+                    "rotation": [(-90, 90, 0), (0, 0, 0), (0, 0,0), (0, 0, 0)],
                     "suffix":["spine"],
                     "attrs":{
                         "rigType": {"widget": "string", "value": "spine"},

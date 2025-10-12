@@ -7,48 +7,56 @@ from ..core.spawner_base import SpawnerBase
 
 class SpawnerJoint(SpawnerBase):
     def precheck(self, all=False) -> bool:
-        guides=[]
-        if all:
-            all_descendants = cmds.listRelatives("guide", ad=True, type="transform", fullPath=True)#need to not harcode
-            all_descendants.reverse()
-            guides = [
-            #so short that my brain confused, need to write proper one later
-            g for g in all_descendants
-            if "_root" in cmds.ls(g, sn=True)[0].lower()
-            and cmds.attributeQuery("isVenGuide", node=g, exists=True)
-            ]
-        else:
-            return False#need to expand later
+        if cmds.objExists(self.guide_group):
+            if all:
+                all_descendants = cmds.listRelatives(self.guide_group, ad=True, type="transform", fullPath=True)#need to not harcode
+                all_descendants.reverse()
+                guides = []
+                for g in all_descendants:
+                    # Get the short name of the node
+                    short_name = cmds.ls(g, sn=True)[0].lower()
 
-        if guides:
-            return guides
+
+                    has_root = "root" in short_name
+                    has_is_guide = cmds.attributeQuery("isVenGuide", node=g, exists=True)
+                    if has_root and has_is_guide:
+                        guides.append(g)
+
+                if guides:
+                    return guides
+
+            else:
+                return False, "Guide group Missings"
+
+        else:
+            return False
 
     def spawn(self, guides, group_name="rig") -> None:
         parents = cmds.listRelatives(guides[0], allParents=True) or []
         guide_name = parents[-1] if parents else None
 
-
         if not cmds.objExists(group_name):
             main_group = cmds.group(empty=True, world=True, n=group_name)
             system_group = cmds.group(parent=main_group, empty=True, n="Do_Not_Touch")
-            skeleton_group = cmds.group(parent=system_group, empty=True, n="skeletons")
+            skel_groups = cmds.group(parent=system_group, empty=True, n= self.skeleton_group_name)
             cmds.group(parent=system_group, empty=True, n="geometry")
             cmds.group(parent=system_group, empty=True, n="rig_systems")
             cmds.group(parent=main_group, empty=True, n="controls")
-
             for guide in guides:
-                self.build_joints_from_guides(False, guide, "skeletons")#uh need to change skeletons to variable
+                self.build_joints_from_guides(False, guide, self.root_joint_name)#uh need to change skeletons to variable
 
         else:
-            self.respawn(group_name)
+            self.respawn()
+
             for guide in guides:
-                self.build_joints_from_guides(False, guide, "skeletons")
+                self.build_joints_from_guides(False, guide,  self.root_joint_name)
             skin_cluster.load_skin()
 
-
-        cmds.setAttr(f"{guide_name}.visibility", 0)
+        cmds.setAttr(f"{self.guide_group}.visibility", 0)
 
     def build_joints_from_guides(self, hierarchy=False, root_guide=None, parent=None):
+
+
         visited = set()
         joints = {}
         if root_guide in visited:
@@ -59,8 +67,9 @@ class SpawnerJoint(SpawnerBase):
 
         guide_list = []
         # --- CASE 1: follow EP Curve for hierarchy ---
-        if hierarchy == False:
-            parts = root_guide.split("|")
+        parts = root_guide.split("|")
+        type = cmds.getAttr(f"{root_guide}.rigType")
+        if hierarchy == False and type != "root":
             curve_name = parts[-1].replace("root", "crv")
             up_name = parts[-1].replace("root", "angle")
             if cmds.objExists(curve_name):
@@ -72,17 +81,24 @@ class SpawnerJoint(SpawnerBase):
                     guide = maya_utils.find_guide(attr)
                     guide_list.append(guide)
 
-
             else:
                 cmds.warning(f"No curve found for {root_guide}")
                 return
+        else:
+            guide_list.append(root_guide)#for root jnt, but need to expand soon
 
-        type = cmds.getAttr(f"{root_guide}.rigType")
+
+
+
         guides = guide_list
         if type == "shoulder" or type ==  "finger":
             guides = guide_list[:-1]
         elif type == "foot" :
             guides = guide_list[1:]
+        elif type == "root":
+            jnt = cmds.createNode("joint", name=self.root_joint_name)
+            cmds.parent(jnt, self.skeleton_group_name)
+            return
 
         for guide in guides:
             pos = cmds.xform(guide, q=True, ws=True, t=True)
@@ -103,13 +119,15 @@ class SpawnerJoint(SpawnerBase):
             if ctx.side == "R":
                 primary_vec = math.flip_axis(primary_vec)
                 secondary_vec = math.flip_axis(secondary_vec)
+
+
             if parent:
                 try:
-                    if cmds.objectType(parent) == "joint":
+                    if cmds.objectType(parent) == "joint" and parent != self.root_joint_name:
+                        print(up_name)
                         aim = cmds.aimConstraint(jnt, parent, aimVector=math.axis_to_vector(primary_vec), upVector=math.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
                         cmds.delete(aim)
                         cmds.makeIdentity(parent, apply=True, rotate=True, translate=False, scale=False)
-
 
                     cmds.parent(jnt, parent)
                     if guide == guide_list[-1]:
@@ -133,7 +151,6 @@ class SpawnerJoint(SpawnerBase):
                     ctx.stage = "joint"
                     temp = naming.NamingContext.build(ctx)
                     if cmds.objExists(temp):
-
                         aim = cmds.aimConstraint(jnt, temp, aimVector=math.axis_to_vector(primary_vec), upVector=math.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
                         cmds.delete(aim)
                         cmds.parent(jnt, temp)
@@ -142,6 +159,7 @@ class SpawnerJoint(SpawnerBase):
                     parenta = cmds.listRelatives(guide_parent, parent=True)
 
     def finalize(self) -> None:
+        cmds.select(clear=True)
         pass
 
     @maya_utils.one_undo
@@ -149,17 +167,23 @@ class SpawnerJoint(SpawnerBase):
     def execute(self, *args, **kwargs):
         all = kwargs.get("all")
         self.name = "Joints"
-        guides = self.precheck(all)
-        if not guides:
-            self.logger.log("Joints precheck failed!", "ERROR")
-            return
-        self.spawn(guides)
+        pre = self.precheck(all)
+        if isinstance(pre, tuple):
+            result, *rest = pre
+            message = rest[0] if rest else None
+        else:
+            result, message = pre, None
+        if not result:
+            self.logger.log(f"{self.name} precheck failed! {message or ''}", "ERROR")
+            return False
+
+        self.spawn(pre)
         self.finalize()
 
-
-    def respawn(self, group_name):
-        all_joints = cmds.listRelatives(group_name, allDescendents=True, type='joint') or []
-        skin_cluster.save_skin()
+    def respawn(self):
+        all_joints = cmds.listRelatives(self.skeleton_group_name, allDescendents=True, type='joint') or []
+        skin_cluster.save_skin(all_joints)
         cmds.delete(all_joints)
+
 
 
