@@ -61,6 +61,7 @@ class SpawnerJoint(SpawnerBase):
         joints = {}
         if root_guide in visited:
             return
+
         visited.add(root_guide)
         if not cmds.attributeQuery("isVenGuide", node=root_guide, exists=True):
             return
@@ -93,14 +94,16 @@ class SpawnerJoint(SpawnerBase):
         guides = guide_list
         if type == "shoulder" or type ==  "finger":
             guides = guide_list[:-1]
-        elif type == "foot" :
+        elif type == "foot":
             guides = guide_list[1:]
         elif type == "root":
             jnt = cmds.createNode("joint", name=self.root_joint_name)
             cmds.parent(jnt, self.skeleton_group_name)
             return
 
+        guide_visited = set()
         for guide in guides:
+
             pos = cmds.xform(guide, q=True, ws=True, t=True)
             base_guide = guide.split("|")[-1]
             ctx = GLOBAL_CONFIG.from_string(base_guide)
@@ -108,6 +111,7 @@ class SpawnerJoint(SpawnerBase):
             joint_name = naming.NamingContext.build(ctx)
 
             jnt = cmds.createNode("joint", name=joint_name)
+
 
             cmds.xform(jnt, ws=True, t=pos)
 
@@ -120,43 +124,83 @@ class SpawnerJoint(SpawnerBase):
                 primary_vec = math.flip_axis(primary_vec)
                 secondary_vec = math.flip_axis(secondary_vec)
 
+            pass
+
+
 
             if parent:
                 try:
                     if cmds.objectType(parent) == "joint" and parent != self.root_joint_name:
-                        print(up_name)
                         aim = cmds.aimConstraint(jnt, parent, aimVector=math.axis_to_vector(primary_vec), upVector=math.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
                         cmds.delete(aim)
                         cmds.makeIdentity(parent, apply=True, rotate=True, translate=False, scale=False)
 
                     cmds.parent(jnt, parent)
+
                     if guide == guide_list[-1]:
-                            cmds.setAttr(jnt + ".jointOrientX", 0)
-                            cmds.setAttr(jnt + ".jointOrientY", 0)
-                            cmds.setAttr(jnt + ".jointOrientZ", 0)
+                        for axis in ("X", "Y", "Z"):
+                            cmds.setAttr(f"{jnt}.jointOrient{axis}", 0)
                     parent = jnt
+
 
                 except RuntimeError:
                     cmds.warning(f"{jnt} is already parented under {parent}, skipping...")
 
-            if guide == guides[0]:#clean naming later
-                parenta = cmds.listRelatives(root_guide, parent=True)
-                while parenta:
-                    guide_parent = parenta[0]
-                    if guide_parent == "guide":
-                        break
-                    # Convert guide name → joint name (e.g. hips_g → hips_jnt)
-                    base_guide = guide_parent.split("|")[-1]
-                    ctx = GLOBAL_CONFIG.from_string(base_guide)
-                    ctx.stage = "joint"
-                    temp = naming.NamingContext.build(ctx)
-                    if cmds.objExists(temp):
-                        aim = cmds.aimConstraint(jnt, temp, aimVector=math.axis_to_vector(primary_vec), upVector=math.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
-                        cmds.delete(aim)
-                        cmds.parent(jnt, temp)
-                        break
-                    # keep climbing up
-                    parenta = cmds.listRelatives(guide_parent, parent=True)
+
+
+
+            if guide not in guide_visited:
+                if guide == guides[0]:#clean naming later
+
+                    parenta = cmds.listRelatives(root_guide, parent=True)
+                    child = cmds.listRelatives(parenta, children=True, type='transform') or []
+                    #parentc = cmds.listRelatives(guide, parent=True)
+                    max_climb = 10  # safety limit
+                    i = 0
+
+                    while parenta and i < max_climb:
+                        guide_parent = parenta[0]
+                        i += 1
+
+                        if guide_parent == "guide":
+                            guide_visited.add(guide)
+                            break
+
+                        if "root" in guide_parent.lower() and guide_parent != self.root_guide_name:
+                            guide_parent = [c for c in child if "_root" not in c.lower()] or []
+                            guide_parent = guide_parent[0] if child else guide_parent
+
+
+                        base_guide = guide.split("|")[-1]
+                        ctx = GLOBAL_CONFIG.from_string(base_guide)
+                        ctx.stage = "joint"
+                        childs = naming.NamingContext.build(ctx)
+
+                        aa = guide_parent.split("|")[-1]
+                        ctxs = GLOBAL_CONFIG.from_string(aa)
+                        ctxs.stage = "joint"
+                        parentZ = naming.NamingContext.build(ctxs)
+
+                        if not parentZ == self.root_joint_name:
+                            if cmds.objExists(childs) and cmds.objExists(parentZ):
+
+                                if not len(child) > 1:  # can add option maybe(auto orient)
+                                    aim = cmds.aimConstraint(childs, parentZ, aimVector=math.axis_to_vector(primary_vec), upVector=math.axis_to_vector(secondary_vec), worldUpType="objectrotation", worldUpObject=up_name)
+                                    cmds.delete(aim)
+                                    cmds.parent(childs, parentZ)
+                                    guide_visited.add(guide)
+                                    break
+                                else:
+                                    cmds.parent(childs, parentZ)
+                                    guide_visited.add(guide)
+                                    break
+
+                        # always climb up one level if not broken above
+                        parenta = cmds.listRelatives(guide_parent, parent=True)
+
+                    else:
+                        # optional safety message
+                        cmds.warning(f"Stopped climbing parents for {guide} after {i} iterations (no valid parent found).")
 
     def finalize(self) -> None:
         cmds.select(clear=True)

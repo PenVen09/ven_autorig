@@ -2,11 +2,19 @@ from maya import cmds
 from ..core.spawner_base import SpawnerBase
 from ..core.utils import maya_utils, shape_builder
 from .ChainIKFK import ChainIKFK
+from ..core.base_rigsystem import BaseRigSystems
 class SpawnerController(SpawnerBase):
+
+    def __init__(self, logger=None, name="Unnamed"):
+        super().__init__()
+        self.logger = logger
+        self.name = name
+
+
     def precheck(self) -> bool:
-        if cmds.objExists(self.guide_group) and cmds.objExists(self.joint_group_name):
+        if cmds.objExists(self.guide_group_name) and cmds.objExists(self.joint_group_name):
             if all:
-                all_descendants = cmds.listRelatives(self.guide_group, ad=True, type="transform", fullPath=True)#need to not harcode
+                all_descendants = cmds.listRelatives(self.guide_group_name, ad=True, type="transform", fullPath=True)#need to not harcode
                 all_descendants.reverse()
                 guides = []
                 for g in all_descendants:
@@ -43,42 +51,12 @@ class SpawnerController(SpawnerBase):
         self.spawn(pre)
         self.finalize()
 
-    def spawn(self, root_guide, hierarchy=False) -> None:
-        #root controller
-        main_root_ctrl, main_root_group = shape_builder.create_nurbs("Four Arrows", color="green",
-                                                                     name=self.root_controller_name,
-                                                                     offset=True, parent=self.controller_group_name)
-
-        cmds.matchTransform(main_root_group, self.root_joint_name)
-        in_root_ctrl, in_root_group = shape_builder.create_nurbs("Circle", color="yellow",
-                                                                 name = self.inroot_controller_name,
-                                                                 offset=True, parent=main_root_ctrl)
-        cmds.matchTransform(in_root_group, self.root_joint_name)
-
-
-        guide_dict = {}
+    def spawn(self, root_guide) -> None:
         for guide in root_guide:
-            guide_list, guide_type = self.get_parts(guide)
-            guide_dict = {guide_type: guide_list} #essentials joint
+            A = self.get_parts(guide)
 
-        for type, guide in guide_dict.items():
-            self.test(type)
-            pass
-
-
-    def test(self, rig_type):
-        rig_types = {
-            "arm": ChainIKFK,
-            "leg": ChainIKFK, #tmp
-            "spine": ChainIKFK #tmp
-        }
-
-        rig_class = rig_types[rig_type]
-        a = rig_class()
-        a.build()
-        pass
+        self.rig_system = BaseRigSystems(name="rig", module_data=A)
+        self.rig_system.build()
 
     def finalize(self) -> None:
-        pass
-    def place_controller(self):
         pass

@@ -1,6 +1,6 @@
 from maya import cmds
 import maya.api.OpenMaya as om
-
+#will need to do staticmethod later
 def axis_to_vector(axis):
     if axis == "x+": return (1,0,0)
     if axis == "x-": return (-1,0,0)

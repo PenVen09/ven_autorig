@@ -4,13 +4,14 @@ from maya import cmds
 import re
 
 NAMING_PREFS = {
-    "order": ["base", ("side", "subindex"), "index", "suffix", "stage", "extra"],
+    "order": [("side", "subindex"), "index", "suffix", "stage", "extra"],
     "node_order":["base", "index", "suffix" ],
     "separator": "_",
     "prefixes": {
         "guide": "gd",
         "joint": "bnjnt",
-        "final": "rig",
+        "ik_rigsystems": "ikjnt",
+
         "temp": "tmp",
         "controller": "ctrl"
     },

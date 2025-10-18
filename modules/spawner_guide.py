@@ -50,9 +50,9 @@ class SpawnerGuide(SpawnerBase):
                 cmds.setAttr(f"{self.guide_group}.rigGroup", "rig", type="string")
 
                 #Root Joints
-                ctx = naming.NamingContext("root", "C", "guide", "tmp")
+                ctx = naming.NamingContext("root", "C", "guide", "root")
                 ctx.base = "root"
-                ctx.suffix = None
+                #ctx.suffix = None
                 #ctx.index = None
                 full_name = GLOBAL_CONFIG.get_unique_name(ctx)
 
@@ -61,6 +61,7 @@ class SpawnerGuide(SpawnerBase):
                 cmds.addAttr(self.root_guide, longName="rigType",dt="string")
                 cmds.setAttr(f"{self.root_guide}.rigType", "root", type="string")
             else:
+                self.root_guide = self.root_guide_name #fix later
                 selection = cmds.ls("guide")
 
         elif len(selection) > 1:
