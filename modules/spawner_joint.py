@@ -228,6 +228,3 @@ class SpawnerJoint(SpawnerBase):
         all_joints = cmds.listRelatives(self.skeleton_group_name, allDescendents=True, type='joint') or []
         skin_cluster.save_skin(all_joints)
         cmds.delete(all_joints)
-
-
-

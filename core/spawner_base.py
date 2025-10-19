@@ -2,6 +2,9 @@ from maya import cmds
 from .utils import maya_utils
 from ..config import naming
 from ..config.naming import GLOBAL_CONFIG
+from ..config.guides_list import component_lists
+from ..modules.ChainIKFK import ChainIKFK
+from ..modules.foot import Foot
 class SpawnerBase:
     #naming
     guide_group_name = "guide"
@@ -55,9 +58,18 @@ class SpawnerBase:
                 for i in range(num_cvs):
                     attr = f"{curve_shape}.controlPoints[{i}]"
                     guide = maya_utils.find_guide(attr)
-                    guide_list.append(guide)
 
-                self.modules_data.append(self.add_module(type, parts[-1], guide_list))
+                    base_guide = guide.split("|")[-1]
+                    ctx = GLOBAL_CONFIG.from_string(base_guide)
+                    ctx.stage = "joint"
+                    joint_name = naming.NamingContext.build(ctx)
+
+                    if i == 0:
+                        ctx.stage = "group"
+                        new_name = naming.NamingContext.build(ctx)
+                    guide_list.append(joint_name)
+
+                self.modules_data.append(self.add_module(type, new_name, guide_list))
             else:
                 cmds.warning(f"No curve found for {root_guide}")
                 return

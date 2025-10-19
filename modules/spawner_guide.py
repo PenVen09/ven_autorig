@@ -1,5 +1,4 @@
 from maya import cmds
-import maya.api.OpenMaya as om
 from itertools import zip_longest
 
 from ..core.spawner_base import SpawnerBase
@@ -7,8 +6,11 @@ from ..core.utils import shape_builder, math, maya_utils, attrs
 
 from ..config import naming, guides_list
 from ..config.naming import GLOBAL_CONFIG
-
+from ..config.guides_list import component_lists
 from ..ui import widgets
+
+from ..modules.ChainIKFK import ChainIKFK
+from ..modules.foot import Foot
 
 class SpawnerGuide(SpawnerBase):
     def precheck(self) -> bool:
@@ -32,54 +34,60 @@ class SpawnerGuide(SpawnerBase):
             return False
         self.finalize()
 
-    def spawn(self, tree):
+    @staticmethod
+    def spawn_from_type(name, tree):
+        module_type = component_lists[tree.parent().text(0)][name]["attrs"]["rigType"]["value"]
+        rig_type_lists = {
+            "arm": ChainIKFK,
+            "leg": ChainIKFK,
+            "spine": ChainIKFK,
+            "shoulder": None,
+            "root": None,
+            "foot": Foot
+        }
+
+        rig_cls = rig_type_lists[module_type]
+        if rig_cls is None:
+            return None
+
+        rig = rig_cls(name)
+        rig.create_guide(tree)
+
+
+    def spawn(self, name, tree):
         #ned to fix the basejoint only one
         selection = cmds.ls(selection=True) or []
+
         guide_exist = cmds.objExists("guide")
-        if not selection:
-            if not guide_exist:
-                self.guide_group = cmds.group(empty=True, world=True, n=self.guide_group_name)#Later need to add variable to name guide
-                cmds.group(empty=True, parent=self.guide_group, n="controller_guide")
-                cmds.addAttr(self.guide_group, longName="isGuide", attributeType="bool", defaultValue=1, keyable=False)
-                cmds.setAttr(f"{self.guide_group}.isGuide",cb=False)
-                cmds.addAttr(self.guide_group, longName="jointOrder", dt="string")
-                cmds.setAttr(f"{self.guide_group}.jointOrder", str(GLOBAL_CONFIG.order), type="string")
-                cmds.addAttr(self.guide_group, longName="ctrlOrder", dt="string")
-                cmds.setAttr(f"{self.guide_group}.ctrlOrder", str(GLOBAL_CONFIG.order), type="string")
-                cmds.addAttr(self.guide_group, longName="rigGroup", dt="string")
-                cmds.setAttr(f"{self.guide_group}.rigGroup", "rig", type="string")
+        self.root_guide = self.root_guide_name
 
-                #Root Joints
-                ctx = naming.NamingContext("root", "C", "guide", "root")
-                ctx.base = "root"
-                #ctx.suffix = None
-                #ctx.index = None
-                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
 
-                self.root_guide = shape_builder.create_guide_controller(False, full_name, self.guide_group, (0,0,0), (0,0,0), r=0.8)
-                cmds.addAttr(self.root_guide, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=False)
-                cmds.addAttr(self.root_guide, longName="rigType",dt="string")
-                cmds.setAttr(f"{self.root_guide}.rigType", "root", type="string")
-            else:
-                self.root_guide = self.root_guide_name #fix later
-                selection = cmds.ls("guide")
+        if not guide_exist:
+            self.guide_group = cmds.group(empty=True, world=True, n=self.guide_group_name)#Later need to add variable to name guide
+            cmds.group(empty=True, parent=self.guide_group, n="controller_guide")
+            cmds.addAttr(self.guide_group, longName="isGuide", attributeType="bool", defaultValue=1, keyable=False)
+            cmds.setAttr(f"{self.guide_group}.isGuide",cb=False)
+            cmds.addAttr(self.guide_group, longName="jointOrder", dt="string")
+            cmds.setAttr(f"{self.guide_group}.jointOrder", str(GLOBAL_CONFIG.order), type="string")
+            cmds.addAttr(self.guide_group, longName="ctrlOrder", dt="string")
+            cmds.setAttr(f"{self.guide_group}.ctrlOrder", str(GLOBAL_CONFIG.order), type="string")
+            cmds.addAttr(self.guide_group, longName="rigGroup", dt="string")
+            cmds.setAttr(f"{self.guide_group}.rigGroup", "rig", type="string")
 
-        elif len(selection) > 1:
-            cmds.warning("More than 1 selection detected")
+            #Root Joints
+            ctx = naming.NamingContext("root", "C", "guide", "root")
+            ctx.base = "root"
+            #ctx.suffix = None
+            #ctx.index = None
+            full_name = GLOBAL_CONFIG.get_unique_name(ctx)
+
+            self.root_guide = shape_builder.create_guide_controller(False, full_name, self.guide_group, (0,0,0), (0,0,0), r=0.8)
+            cmds.addAttr(self.root_guide, longName="isVenGuide", attributeType="bool", defaultValue=1, keyable=False)
+            cmds.addAttr(self.root_guide, longName="rigType",dt="string")
+            cmds.setAttr(f"{self.root_guide}.rigType", "root", type="string")
         else:
-            #iforgotwhatthisis
-            """
-            if cmds.attributeQuery("isVenGuide", node=selection[0], exists=True):
-                cmds.matchTransform(root_node, selection[0], pos=True, rot=False, scl=False)
-                cmds.parent(root_node, selection[0])
-            elif cmds.attributeQuery("isGuide", node=selection[0], exists=True):
-                cmds.parent(root_node, selection[0])
-
-            else:
-                #self.logger.log("Parent is not autorig guide", "Warning")
-                return #eh? or pass
-            """
-            pass
+            self.root_guide = self.root_guide_name #fix later
+            #selection = cmds.ls("guide")
 
 
         if tree:
@@ -130,6 +138,7 @@ class SpawnerGuide(SpawnerBase):
 
                     ctx.suffix = "root"
                     full_name = GLOBAL_CONFIG.get_unique_name(ctx)
+
                     root_node = shape_builder.create_guide_controller(False, full_name, None, pos, rot, r=0.8)
 
                     cmds.parent(parent_node, root_node)
@@ -148,7 +157,6 @@ class SpawnerGuide(SpawnerBase):
                         cmds.parent(root_node, self.root_guide)
                         guide_exist=True
                     else:
-
                         cmds.parent(root_node, self.root_guide, absolute=True)
 
                     if ep_curve:
@@ -185,99 +193,44 @@ class SpawnerGuide(SpawnerBase):
 
                     parent_node = child_node
 
-            #type = cmds.getAttr(f"{base}.rigType")
-            if base == "Arm" or base == "Leg":
-                primary_vec = math.axis_to_vector("x+")
-                up_vec = math.axis_to_vector("y+")
-                root = nodes[0]
-                elbow = nodes[1]
-                wrist = nodes[2]
-                '''
-                #auto parent for non IK Planar?
-                if len(nodes)>3:
-                    for node in nodes[3:]:
-                        print(nodes[2])
-                        print(node)
-                        #cmds.parent(node, nodes[2])
-                        
-                '''
+            #nodes, root_node, ctx, angle_controller, ep_offset
+            module_type = component_lists[tree.parent().text(0)][name]["attrs"]["rigType"]["value"]
+            rig_type_lists = {
+                "arm": ChainIKFK,
+                "leg": ChainIKFK,
+                "spine": ChainIKFK,
+                "shoulder": None,
+                "root": None,
+                "foot": Foot
+            }
 
-                for node in nodes[1:]:
-                    cmds.parent(node, root_node)
+            rig_cls = rig_type_lists[module_type]
+            if rig_cls is None:
+                return None
 
-                parts = GLOBAL_CONFIG.from_string(nodes[0])
-                base_name = naming.NamingContext.build(parts, new_order=naming.NAMING_PREFS["node_order"])
+            rig = rig_cls(name)
+            rig.create_guide(nodes, root_node, ctx, angle_controller, ep_offset)
 
-                # --- Spawn pole vector arrow ---
-
-                #ctx.suffix = "angle"
-                #full_name = GLOBAL_CONFIG.get_unique_name(ctx)
-                #angle_controller = shape_builder.create_nurbs("one_arrow", full_name)
-                #cmds.matchTransform(angle_controller, root_node)
-                #cmds.parent(angle_controller, root)
-                #cmds.rotate(90,0,0, angle_controller)
-
-                ctx.suffix = "pvDir"
-                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
-                pv_controller = shape_builder.create_nurbs("one_arrow", full_name)
-                cmds.addAttr(pv_controller, longName="elbowRatio", attributeType="float", defaultValue=0.5, keyable=True)
+            #self.spawn_from_type(nodes, root_node, ctx, angle_controller, ep_offset)
 
 
-                # --- Root aim at Elbow --- ##NEED TO DO SMTH SO CAN EASILY CHANGE AXIS
-                cmds.aimConstraint(wrist, root, aimVector=primary_vec, upVector=up_vec, worldUpType="object", worldUpObject=elbow)
-                cmds.aimConstraint(wrist, elbow, aimVector=primary_vec, upVector=up_vec, worldUpType="objectrotation", worldUpObject=wrist)
+            if not selection:
+                pass
+            elif len(selection) > 1:
+                cmds.warning("More than 1 selection detected")
+                return
+            else:
 
-                # --- Elbow between two points ---
-                ctx = GLOBAL_CONFIG.from_string(elbow)
-                ctx.suffix = "elbowOffset"
-                full_name = GLOBAL_CONFIG.get_unique_name(ctx)
-                elbow_offset = cmds.group(empty=True, p=root_node, n=full_name)
-                cmds.parent(elbow, elbow_offset, a=True)
+                if cmds.attributeQuery("isVenGuide", node=selection[0], exists=True):
+                    cmds.parent(root_node, selection)
+                    cmds.xform(root_node, translation=(0, 0, 0))
 
-                bc = cmds.createNode("blendColors", name=f"BC_{base_name}")
-                cmds.connectAttr(root + ".translate", bc + ".color1", f=True)
-                cmds.connectAttr(wrist + ".translate", bc + ".color2", f=True)
-                cmds.connectAttr(pv_controller + ".elbowRatio", bc + ".blender", f=True)
+                elif cmds.attributeQuery("isGuide", node=selection[0], exists=True):
+                    pass#later
+                else:
+                    self.logger.log("Parent is not autorig guide", "Warning")
+                    return
 
-                # Drive elbow pos
-                cmds.connectAttr(bc + ".output", elbow_offset + ".translate", f=True)
-
-                # --- Pole Vector Position ---
-                self.build_auto_pv(pv_controller, elbow, angle_controller, offset_len=15.0)
-
-                cmds.parent(pv_controller, root)
-                cmds.pointConstraint(elbow, pv_controller, mo=True)
-
-            elif base == "Foot":
-                foot_list = {
-                    "heel":(0, -7.829, -3.469),
-                    "out":(4.555, -8.734, 9.097),
-                    "in":(-3.643, -8.734, 9.097)
-                    }
-
-                for name, pos in foot_list.items():
-                    ctx.suffix = f"{name}crv"
-                    full_name = GLOBAL_CONFIG.get_unique_name(ctx)
-                    ep_curve = cmds.curve(d=1, p=[(0,0,0),(0,0,0)], name=full_name)
-                    ep_shape = shape_builder.rename_shape(ep_curve)
-
-                    cmds.parent(ep_curve, ep_offset)
-                    cmds.setAttr(f"{ep_curve}.template", 1)
-                    cmds.setAttr(f"{ep_curve}.lineWidth", 1.5)
-
-                    node_name = f"{nodes[0]}_ws"
-                    if not cmds.objExists(node_name):
-                        cmds.createNode("decomposeMatrix", name=f"{nodes[0]}" + "_ws")
-                        cmds.connectAttr(f"{nodes[0]}.worldMatrix[0]", f"{node_name}.inputMatrix", f=True)
-                    cmds.connectAttr(f"{node_name}.outputTranslate", f"{ep_shape}.controlPoints[0]")
-
-                    ctx.suffix = name
-                    full_name = GLOBAL_CONFIG.get_unique_name(ctx)
-                    new_node = shape_builder.create_guide_controller(True, full_name, nodes[0], pos, (0,0,0), r=0.8)
-
-                    new_space = cmds.createNode("decomposeMatrix", name=f"{new_node}" + "_ws")
-                    cmds.connectAttr(f"{new_node}.worldMatrix[0]", f"{new_space}.inputMatrix", f=True)
-                    cmds.connectAttr(f"{new_space}.outputTranslate", f"{ep_shape}.controlPoints[1]")
             cmds.select(clear=True)
             return True
 
@@ -316,22 +269,6 @@ class SpawnerGuide(SpawnerBase):
     def add_metadata(self):
         pass
 
-    def build_auto_pv(self, pv_controller, elbow, up, offset_len=10.0):
-        """
-        Builds a PV locator offset along world Z, with automatic flip.
-        """
-        p_elbow = math.get_world_pos(elbow)
-        p_up = math.local_axis(up, axis='z')
-
-        z_axis = om.MVector(0, 0, 1)
-
-        if p_up[-1] > 0:
-            z_axis *= -1
-
-        pv_pos = p_elbow + z_axis * offset_len
-
-        cmds.xform(pv_controller, ws=True, t=(pv_pos.x, pv_pos.y, pv_pos.z))
-        return pv_pos
 
     def show_guide(self):
         #need to hide joint later

@@ -1,15 +1,16 @@
 from maya import cmds
 from ..core.spawner_base import SpawnerBase
 from ..core.utils import maya_utils, shape_builder
-from .ChainIKFK import ChainIKFK
-from ..core.base_rigsystem import BaseRigSystems
+from ..modules.ChainIKFK import ChainIKFK
+from ..modules.foot import Foot
 class SpawnerController(SpawnerBase):
 
     def __init__(self, logger=None, name="Unnamed"):
         super().__init__()
         self.logger = logger
         self.name = name
-
+        self.root = None
+        self.controllers = []
 
     def precheck(self) -> bool:
         if cmds.objExists(self.guide_group_name) and cmds.objExists(self.joint_group_name):
@@ -48,15 +49,59 @@ class SpawnerController(SpawnerBase):
         if not result:
             self.logger.log(f"{self.name} precheck failed! {message or ''}", "ERROR")
             return False
-        self.spawn(pre)
+        self.create_rigsystems(pre)
         self.finalize()
 
-    def spawn(self, root_guide) -> None:
-        for guide in root_guide:
-            A = self.get_parts(guide)
+    def build_root(self):
+        """Create global root controller."""
 
-        self.rig_system = BaseRigSystems(name="rig", module_data=A)
-        self.rig_system.build()
+        if not cmds.objExists(self.root_controller_name):
+            main_root_ctrl, main_root_group = shape_builder.create_nurbs("Four Arrows", color="green",
+                                                                     name=self.root_controller_name,
+                                                                     offset=True, parent=self.controller_group_name)
+            cmds.matchTransform(main_root_group, self.root_joint_name)
+
+            in_root_ctrl, in_root_group =  shape_builder.create_nurbs("Circle", color="yellow",
+                                                                     name = self.inroot_controller_name,
+                                                                     offset=True, parent=main_root_ctrl)
+            cmds.matchTransform(in_root_group, self.root_joint_name)
+
+
+            self.controllers.append(main_root_ctrl)
+            self.controllers.append(in_root_ctrl)
+            print(f"Root controller created: {self.root}")
+        else:
+            print("Root already exists — skipping.")
+
+
+    def create_rigsystems(self, datas) -> None:
+        cmds.setAttr(f"skeletons.visibility", 0)
+        self.build_root()
+
+        for module_dict in datas:
+            module_name = list(module_dict.keys())[0]
+            data = module_dict[module_name]
+            module_type = data['type']
+
+            rig_types = {
+            "arm": "ChainIKFK",
+            "leg": "ChainIKFK", #tmp
+            "spine": "ChainIKFK", #tmp
+            "shoulder": "None",
+            "root": "None",
+            "foot": "Foot"
+            }
+            rig_class = rig_types[module_type]
+
+            if rig_class == "ChainIKFK":
+                rig_module = ChainIKFK(
+                    name=module_name,
+                )
+                rig_module.build(joint_chain=data["guides"])
+            elif rig_class == "Foot":
+                print("foot")
+                pass
+
 
     def finalize(self) -> None:
         pass

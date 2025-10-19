@@ -31,7 +31,8 @@ from ..config.naming import GLOBAL_CONFIG
 from ..core.utils import maya_utils, logger
 
 from ..modules import spawner_guide, spawner_joint, spawner_controller
-
+from ..modules.ChainIKFK import ChainIKFK
+from ..modules.foot import Foot
 
 comments = "This is version 1.0"
 
@@ -84,8 +85,8 @@ class VenAutoRig(QtWidgets.QDialog):
     def on_spawn_clicked(self):
         tree_selection = self.component_tree_list.currentItem()
         selected = tree_selection.text(0)
-        #self.spawn_guidess()
-        self.spawn_guides.execute(name=selected, tree = tree_selection)
+        self.spawn_guides.spawn(selected, tree_selection)
+        #self.spawn_guides.spawn_from_type(name=selected, tree = tree_selection)
 
     def add_toolbar_button(self, name, builder_func, default_open=False, icon_name=None):
         if icon_name:

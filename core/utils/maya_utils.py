@@ -1,6 +1,8 @@
 from maya import cmds
 from functools import wraps
 import time
+from ...config import naming
+from ...config.naming import GLOBAL_CONFIG
 #will need to do staticmethod later
 def one_undo(func):
     @wraps(func)
@@ -71,3 +73,10 @@ def has_attr(node, name = "isVenGuide"):
     if not cmds.objExists(node):
         return False
     return cmds.attributeQuery(name, node=node, exists=True)
+def duplicate_joint(joint_name: str, joint_suffix: str) -> str:
+    """Duplicate a joint and return the new joint name."""
+    ctx = GLOBAL_CONFIG.from_string(joint_name)
+    ctx.stage = joint_suffix
+    new_joint = naming.NamingContext.build(ctx)
+    new_joint = cmds.duplicate(joint_name, name=new_joint, parentOnly=True)[0]
+    return new_joint
