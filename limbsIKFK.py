@@ -5,6 +5,7 @@ from ..core.bone import Bone
 from ..core.utils import shape_builder, math, maya_utils
 
 from ..config import naming, guides_list
+from ..config.naming import NamingConfig
 import maya.api.OpenMaya as om
 
 class LimbsIKFK(Bone):
@@ -14,12 +15,20 @@ class LimbsIKFK(Bone):
     def __init__(self, name, root_name):
         self.name = name
         self.root_name = root_name
-        #self.joint_chain = None
+
+        #temporary
+        ctx = naming.NamingContext("root", "C", "controller", "root")
+        #ctx.suffix = None
+        self.root_controller_name = naming.NamingContext.build(ctx)
+
+        ctx = naming.NamingContext("inroot", "C", "controller", "inroot")
+        self.inroot_controller_name = naming.NamingContext.build(ctx)
+
 
     def create_rigsystems(self, bn_joint_list=None):
 
-        ik, fk, ikfk, stretch, switch, reverse = maya_utils.duplicate_chain(self.name, bn_joint_list)
-        self.create_controller(ik, fk, ikfk, stretch, switch, reverse)
+        ik, fk, ikfk, stretch, switch, reverse, blend = maya_utils.duplicate_chain(self.name, bn_joint_list)
+        self.create_controller(ik, fk, ikfk, stretch, switch, reverse, blend)
 
     def create_guide(self, nodes, root_node, ctx, angle_controller, ep_offset):
         primary_vec = math.axis_to_vector("x+")
@@ -84,13 +93,23 @@ class LimbsIKFK(Bone):
 
     def create_joint(self, bn_joint_list=None):
         """add twist bone if arm/leg"""
-        twist = cmds.getAttr(f"{self.root_name}.twist")
-        if twist > 0:
-            pass
-        pass
+        #twist = cmds.getAttr(f"{self.root_name}.twist")
+        #if twist > 0:
+            #pass
+        #pass
 
-    def create_controller(self, ik_joints_list, fk_joints_list, ikfk_joints_list, stretch_joints_list, switch_ctrl, reverse_node):
-        parent="controls"
+    def create_controller(self, ik_joints_list, fk_joints_list, ikfk_joints_list, stretch_joints_list, switch_ctrl, reverse_node, blend_node ):
+        controller_parent = cmds.listRelatives(self.root_name, parent=True)[0]
+        ctx = naming.NamingConfig.from_string(controller_parent)
+        ctx.stage = "controller"
+        controller_parent = naming.NamingContext.build(ctx)
+
+
+        if not controller_parent or controller_parent == self.root_controller_name:
+            parent = self.inroot_controller_name
+        else:
+            parent = controller_parent
+
         offset_list = []
         for fk in fk_joints_list:
             ctx = GLOBAL_CONFIG.from_string(fk)
@@ -111,7 +130,7 @@ class LimbsIKFK(Bone):
         cmds.connectAttr(switch_ctrl + ".ikFkSwitch", offset_list[0] + ".visibility")
 
         # ======== IK Ctrl ======== #
-        parent="controls"
+        parent= self.inroot_controller_name
         ctx = GLOBAL_CONFIG.from_string(fk)
         ctx.stage = "ikctrl"
         new_ctrl = naming.NamingContext.build(ctx)
@@ -130,9 +149,12 @@ class LimbsIKFK(Bone):
         cmds.connectAttr(reverse_node + ".outputX", ctrl_offset + ".visibility")
         shape_builder.resize_shape(8.0, ctrl)
         cmds.matchTransform(ctrl_offset, ik_joints_list[-1], position=True)
-        ikhandle = cmds.ikHandle(sj=ik_joints_list[0], ee=ik_joints_list[-1])[0]
+        ctx.stage = "ikHandle"
+        ikhandle = cmds.ikHandle(sj=ik_joints_list[0], ee=ik_joints_list[-1], name = naming.NamingContext.build(ctx))[0]
+        cmds.setAttr(f"{ikhandle}.visibility", 0)
 
         # ======== IK Pole Vector Ctrl ======== #
+        ctx = GLOBAL_CONFIG.from_string(fk_joints_list[0])
         ctx.stage = "ikpv"
         new_pvctrl = naming.NamingContext.build(ctx)
         pv_ctrl , pv_offset = shape_builder.create_nurbs("diamond", name=new_pvctrl, offset=True, parent=parent, color="red")
@@ -144,16 +166,16 @@ class LimbsIKFK(Bone):
 
         ctx.stage = "guide"
         ctx.suffix = "pvDir"
-        pv_guide_name =  naming.NamingContext.build(ctx)
+        pv_guide_name = naming.NamingContext.build(ctx)
         cmds.matchTransform(pv_offset, pv_guide_name, position=True)
 
 
         cmds.poleVectorConstraint(pv_ctrl, ikhandle)
-        cmds.orientConstraint(ctrl, ik_joints_list[-1])
+        cmds.orientConstraint(ctrl, ik_joints_list[-1], mo=True)
         cmds.parent(ikhandle, ctrl)
 
 
-        maya_utils.create_stretch(ik_joints_list, stretch_joints_list, ctrl, switch_ctrl, ikfk_joints_list)
+        maya_utils.create_stretch(ik_joints_list, stretch_joints_list, ctrl, switch_ctrl, pv_ctrl)
 
     def build_auto_pv(self, pv_controller, elbow, up, offset_len=10.0):
         """

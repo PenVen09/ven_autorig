@@ -49,6 +49,7 @@ class SpawnerController(SpawnerBase):
         if not result:
             self.logger.log(f"{self.name} precheck failed! {message or ''}", "ERROR")
             return False
+
         self.create_rigsystems(pre)
         self.finalize()
 
@@ -103,7 +104,7 @@ class SpawnerController(SpawnerBase):
         rig_class = rig_class_map.get(rig_class_name)
 
         if rig_class:
-            rig_module = rig_class(name=module_name, root_name=names)
+            rig_module = rig_class(name=module_name, root_name=name)
             rig_module.create_rigsystems(bn_joint_list=data["guides"])
 
 

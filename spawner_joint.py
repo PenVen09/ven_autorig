@@ -42,16 +42,13 @@ class SpawnerJoint(SpawnerBase):
             skel_groups = cmds.group(parent=system_group, empty=True, n= self.skeleton_group_name)
             cmds.group(parent=system_group, empty=True, n="geometry")
             cmds.group(parent=system_group, empty=True, n="rig_systems")
+            cmds.group(parent=system_group, empty=True, n="locators")
             cmds.group(parent=main_group, empty=True, n="controls")
-            cmds.group(parent=main_group, empty=True, n="locators")
+
+            cmds.setAttr("locators.visibility", 0)
             for guide in guides:
                 self.build_joints_from_guides(False, guide, self.root_joint_name)#uh need to change skeletons to variable
-                print(guide)
                 self.create_additional(guide)
-
-
-
-
         else:
             self.respawn()
 
@@ -92,10 +89,6 @@ class SpawnerJoint(SpawnerBase):
                 return
         else:
             guide_list.append(root_guide)#for root jnt, but need to expand soon
-
-
-
-
         guides = guide_list
         if type == "shoulder" or type ==  "finger":
             guides = guide_list[:-1]
@@ -130,9 +123,6 @@ class SpawnerJoint(SpawnerBase):
                 secondary_vec = math.flip_axis(secondary_vec)
 
             pass
-
-
-
             if parent:
                 try:
                     if cmds.objectType(parent) == "joint" and parent != self.root_joint_name:
@@ -150,8 +140,6 @@ class SpawnerJoint(SpawnerBase):
 
                 except RuntimeError:
                     cmds.warning(f"{jnt} is already parented under {parent}, skipping...")
-
-
 
 
             if guide not in guide_visited:
